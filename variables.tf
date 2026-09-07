@@ -39,3 +39,9 @@ variable "ssh_users" {
     public_key = string
   }))
 }
+
+variable "ssh_source_ranges" {
+  description = "Source ranges allowed to reach the jumphost on tcp/22. Snäv in denna till lagets faktiska IP-adresser när de är kända."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
