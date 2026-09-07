@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: terraform-deploy
+  cancel-in-progress: false
+
 jobs:
   terraform:
     name: Terraform Plan & Apply
