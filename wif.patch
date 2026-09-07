@@ -1,0 +1,124 @@
+diff --git a/.github/workflows/deploy.yml b/.github/workflows/deploy.yml
+index 250ce8c..7e13882 100644
+--- a/.github/workflows/deploy.yml
++++ b/.github/workflows/deploy.yml
+@@ -7,6 +7,7 @@ on:
+ 
+ permissions:
+   contents: read
++  id-token: write
+ 
+ jobs:
+   terraform:
+@@ -19,7 +20,8 @@ jobs:
+       - name: Authenticate to Google Cloud
+         uses: google-github-actions/auth@v2
+         with:
+-          credentials_json: ${{ secrets.GCP_SA_KEY }}
++          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
++          service_account: ${{ vars.CICD_SERVICE_ACCOUNT }}
+ 
+       - name: Setup Terraform
+         uses: hashicorp/setup-terraform@v3
+diff --git a/bootstrap/main.tf b/bootstrap/main.tf
+index 2fc7de1..3600678 100644
+--- a/bootstrap/main.tf
++++ b/bootstrap/main.tf
+@@ -20,6 +20,8 @@ provider "google" {
+   project = var.project_id
+ }
+ 
++data "google_project" "project" {}
++
+ resource "random_id" "bucket_suffix" {
+   byte_length = 4
+ }
+@@ -64,6 +66,28 @@ resource "google_storage_bucket_iam_member" "read_bucket" {
+   member = "allAuthenticatedUsers"
+ }
+ 
++resource "google_iam_workload_identity_pool" "github" {
++  workload_identity_pool_id = "team${var.team_id}-github-pool"
++  display_name              = "GitHub Actions Pool"
++}
++
++resource "google_iam_workload_identity_pool_provider" "github" {
++  workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
++  workload_identity_pool_provider_id = "team${var.team_id}-github-provider"
++  display_name                       = "GitHub Actions Provider"
++
++  attribute_mapping = {
++    "google.subject"       = "assertion.sub"
++    "attribute.repository" = "assertion.repository"
++  }
++
++  oidc {
++    issuer_uri = "https://token.actions.githubusercontent.com"
++  }
++
++  attribute_condition = "assertion.repository == '${var.github_repo}'"
++}
++
+ resource "google_service_account" "cicd" {
+   account_id   = "team${var.team_id}-cicd"
+   display_name = "CI/CD Pipeline Service Account"
+@@ -75,6 +99,12 @@ resource "google_project_iam_member" "cicd_editor" {
+   member  = "serviceAccount:${google_service_account.cicd.email}"
+ }
+ 
++resource "google_service_account_iam_member" "cicd_workload_identity" {
++  service_account_id = google_service_account.cicd.name
++  role               = "roles/iam.workloadIdentityUser"
++  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repo}"
++}
++
+ resource "google_service_account_key" "cicd" {
+   service_account_id = google_service_account.cicd.name
+ }
+diff --git a/bootstrap/outputs.tf b/bootstrap/outputs.tf
+index a0eca90..5895d1e 100644
+--- a/bootstrap/outputs.tf
++++ b/bootstrap/outputs.tf
+@@ -3,8 +3,18 @@ output "bucket_name" {
+   value       = google_storage_bucket.terraform_state.name
+ }
+ 
++output "cicd_service_account_email" {
++  description = "The email of the CI/CD service account"
++  value       = google_service_account.cicd.email
++}
++
++output "workload_identity_provider" {
++  description = "The full resource name of the Workload Identity Provider"
++  value       = google_iam_workload_identity_pool_provider.github.name
++}
++
+ output "cicd_service_account_key_json" {
+-  description = "The JSON key for the CI/CD service account"
++  description = "The JSON key for the CI/CD service account (fallback, not used by WIF)"
+   value       = google_service_account_key.cicd.private_key
+   sensitive   = true
+ }
+diff --git a/bootstrap/terraform.tfvars b/bootstrap/terraform.tfvars
+index 49a9b6c..cc2b4dc 100644
+--- a/bootstrap/terraform.tfvars
++++ b/bootstrap/terraform.tfvars
+@@ -1,2 +1,3 @@
+-project_id = "skymill-gcp-test"
+-team_id    = 1
++project_id  = "skymill-gcp-test"
++team_id     = 1
++github_repo = "dhskymill/team-test-new"
+diff --git a/bootstrap/variables.tf b/bootstrap/variables.tf
+index bd1b4b4..1a8a7fa 100644
+--- a/bootstrap/variables.tf
++++ b/bootstrap/variables.tf
+@@ -7,3 +7,8 @@ variable "team_id" {
+   description = "The team ID"
+   type        = number
+ }
++
++variable "github_repo" {
++  description = "GitHub repository in 'owner/repo' format allowed to authenticate via WIF"
++  type        = string
++}
