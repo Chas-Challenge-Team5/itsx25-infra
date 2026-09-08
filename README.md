@@ -16,6 +16,11 @@ En VPC per lag med ett `/24`-subnät (`10.0.5.0/24`). En jumphost med extern IP 
 
 ## Så körs det
 
+**Issue #12:** Innan OS Login-ändringen mergas måste en behörig administratör
+köra åtkomstmodulen i `access/` och verifiera tilldelningen för alla fem användare.
+Se [införande och verifiering av OS Login](docs/os-login.md).
+Modulen har separat state och tilldelar sudoåtkomst endast på Team 5:s jumphost.
+
 Bootstrap ligger utanför pipelinen och appliceras manuellt en gång. Den skapar bucketen som pipelinen sedan lagrar state i, så den kan inte deploya sig själv.
 
 ```bash
