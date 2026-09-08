@@ -32,7 +32,7 @@ variable "instructor_cidr" {
   default     = "10.0.0.0/24"
 }
 
-variable "ssh_users" {
+ variable "ssh_users" {
   description = "List of SSH users and their public keys for instance access"
   type = list(object({
     username   = string
