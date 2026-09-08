@@ -18,4 +18,8 @@ ssh_users = [
     username   = "adam"
     public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK/WUp+rlMd0LtgWjT+G3/LyKe6fXk4ZNgKQH/gmvdEp"
   },
+  {
+    username   = "abdi"
+    public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKkrc8ywH+hbJvKNGVwU/lZ/jYpes2jdre4sOKgHSV88 hakim.abdi@chasacademy.se"
+  },
 ]
