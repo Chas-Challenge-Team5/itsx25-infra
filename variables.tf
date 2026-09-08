@@ -50,9 +50,9 @@ variable "os_admin_users" {
   type        = list(string)
   description = "Lista på e-postadresser för användare som ska ha OS Admin-åtkomst (sudo)"
   default     = [
-    "armin:armin.ozkalp@chasacademy.se",
-    "mattej:mattej.petrovic@chasacademy.se",
-    "viktor:viktor.myhre@chasacademy.se",
-    "adam:adam.konopa@chasacademy.se"
+    "user:armin.ozkalp@chasacademy.se",
+    "user:mattej.petrovic@chasacademy.se",
+    "user:viktor.myhre@chasacademy.se",
+    "user:adam.konopa@chasacademy.se"
   ]
 }
