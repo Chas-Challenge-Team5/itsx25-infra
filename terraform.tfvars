@@ -25,8 +25,8 @@ team_id    = 5
 #]
 
 os_admin_users = [
-    "armin:armin.ozkalp@chasacademy.se",
-    "mattej:mattej.petrovic@chasacademy.se",
-    "viktor:viktor.myhre@chasacademy.se",
-    "adam:adam.konopa@chasacademy.se"
+    "user:armin.ozkalp@chasacademy.se",
+    "user:mattej.petrovic@chasacademy.se",
+    "user:viktor.myhre@chasacademy.se",
+    "user:adam.konopa@chasacademy.se"
 ]
