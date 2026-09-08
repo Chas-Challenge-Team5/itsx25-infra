@@ -25,6 +25,8 @@ terraform init && terraform apply
 
 Sätt sedan repo-variablerna `WORKLOAD_IDENTITY_PROVIDER` och `CICD_SERVICE_ACCOUNT` från outputen. Därefter sköter pipelinen resten: varje PR körs genom `fmt`, `validate` och `plan`, och merge till `main` kör `apply`.
 
+Bootstrap appliceras aldrig av pipelinen. PR-checkarna kör `init` och `validate` mot `bootstrap/` så en trasig fil fångas, men ingen `plan`, eftersom bootstrap läser IAM och kräver API:er påslagna på kvotprojektet som pipelinen inte ska röra. En admin i teamet kör `terraform plan` och sedan `terraform apply` i `bootstrap/` för hand efter att en PR som rör den mappen har mergats. Skälet är hönan och ägget: bootstrap skapar bucketen pipelinen lagrar sitt state i, så den kan inte köras av något som redan förutsätter den. Att hålla den utanför CI betyder också att pipelinen aldrig får rätten att skriva om IAM, WIF eller state-bucketen på egen hand.
+
 Rotmodulen lokalt:
 
 ```bash

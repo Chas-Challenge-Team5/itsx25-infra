@@ -30,11 +30,27 @@ jobs:
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
 
-      - name: Terraform Init
+      # Rotmodulen: nätet som pipelinen deployar.
+      - name: Terraform Init (root)
         run: terraform init
 
-      - name: Terraform Validate
+      - name: Terraform Validate (root)
         run: terraform validate
 
-      - name: Terraform Plan
+      - name: Terraform Plan (root)
         run: terraform plan -input=false -no-color
+
+      # Bootstrap: körs för hand, men init och validate körs här så en trasig
+      # bootstrap/main.tf inte glider förbi grön CI som förr (#9). init laddar
+      # konfigen och dör på parse-fel, validate är syntaxgrinden. fmt kontrollerar
+      # bara formatering och stoppar inte HCL som inte går att parsa.
+      # Ingen plan mot bootstrap: den läser IAM och kräver att IAM-API:et är
+      # påslaget på kvotprojektet, vilket pipelinen inte ska konfigurera. Admin
+      # kör plan lokalt innan manuell apply.
+      - name: Terraform Init (bootstrap)
+        run: terraform init
+        working-directory: bootstrap
+
+      - name: Terraform Validate (bootstrap)
+        run: terraform validate
+        working-directory: bootstrap
