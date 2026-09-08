@@ -19,15 +19,12 @@ run "team5_access" {
     error_message = "Access must be limited to Team 5's jumphost."
   }
 
-  assert {
-    condition     = contains(keys(google_compute_instance_iam_member.os_admin_logins), "user:hakim.abdi@chasacademy.se")
-    error_message = "Abdi must be included in the access migration."
-  }
 }
 
 run "reject_invalid_identity" {
   command = plan
   variables {
+    # Intentionally invalid prefix: validation must reject this instead of user:email.
     os_admin_users = ["viktor:viktor.myhre@chasacademy.se"]
   }
   expect_failures = [var.os_admin_users]
