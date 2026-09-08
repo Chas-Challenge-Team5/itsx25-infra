@@ -32,16 +32,27 @@ variable "instructor_cidr" {
   default     = "10.0.0.0/24"
 }
 
- variable "ssh_users" {
-  description = "List of SSH users and their public keys for instance access"
-  type = list(object({
-    username   = string
-    public_key = string
-  }))
-}
+# variable "ssh_users" {
+#  description = "List of SSH users and their public keys for instance access"
+ # type = list(object({
+  #  username   = string
+   # public_key = string
+ # }))
+#}
 
 variable "ssh_source_ranges" {
   description = "Source ranges allowed to reach the jumphost on tcp/22. Snäv in denna till lagets faktiska IP-adresser när de är kända."
   type        = list(string)
   default     = ["0.0.0.0/0"]
+}
+
+variable "os_admin_users" {
+  type        = list(string)
+  description = "Lista på e-postadresser för användare som ska ha OS Admin-åtkomst (sudo)"
+  default     = [
+    "armin:armin.ozkalp@chasacademy.se",
+    "mattej:mattej.petrovic@chasacademy.se",
+    "viktor:viktor.myhre@chasacademy.se",
+    "adam:adam.konopa@chasacademy.se"
+  ]
 }

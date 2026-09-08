@@ -17,7 +17,7 @@ locals {
   team_zone                = (var.team_id - 1) % 3
   jumphost_zone            = coalesce(var.jumphost_zone, data.google_compute_zones.available.names[local.team_zone])
   primary_zone             = coalesce(var.primary_zone, data.google_compute_zones.available.names[local.team_zone])
-  subnet_cidr              = "10.0.${var.team_id}.0/24"
+  subnet_cidr               = "10.0.${var.team_id}.0/24"
 }
 
 data "google_compute_zones" "available" {
@@ -101,10 +101,9 @@ resource "google_compute_instance" "jumphost" {
   }
 
   metadata = {
-    ssh-keys               = join("\n", [for user in var.ssh_users : "${user.username}:${user.public_key}"])
+    enable-oslogin         = "TRUE"
     block-project-ssh-keys = true
     startup-script         = <<-EOT
-
       #!/bin/bash
       set -e
 
@@ -123,6 +122,12 @@ resource "google_compute_instance" "jumphost" {
       DEFAULT_IF=$(ip ro sh default | awk '/default/ {print $5}')
       iptables -t nat -A POSTROUTING -o "$DEFAULT_IF" -s "${local.subnet_cidr}" -j MASQUERADE
     EOT
+  }
+
+  shielded_instance_config {
+    enable_secure_boot          = true
+    enable_vtpm                 = true
+    enable_integrity_monitoring = true
   }
 }
 
@@ -202,3 +207,12 @@ resource "google_compute_firewall" "allow_internal" {
   source_ranges = [var.instructor_cidr, local.subnet_cidr]
   target_tags   = ["jumphost", "primary"]
 }
+
+resource "google_project_iam_member" "os_admin_logins" {
+  for_each = toset(var.os_admin_users)
+
+  project = var.project_id
+  role    = "roles/compute.osAdminLogin"
+  member  = each.value
+}
+
