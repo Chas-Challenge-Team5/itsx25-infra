@@ -76,10 +76,22 @@ resource "google_service_account" "cicd" {
   display_name = "CI/CD Pipeline Service Account"
 }
 
-resource "google_project_iam_member" "cicd_editor" {
+resource "google_project_iam_member" "cicd_network_admin" {
   project = var.project_id
-  role    = "roles/editor"
+  role    = "roles/compute.networkAdmin"
   member  = "serviceAccount:${google_service_account.cicd.email}"
+}
+
+resource "google_project_iam_member" "cicd_instance_admin" {
+  project = var.project_id
+  role    = "roles/compute.instanceAdmin.v1"
+  member  = "serviceAccount:${google_service_account.cicd.email}"
+}
+
+resource "google_storage_bucket_iam_member" "cicd_state_object_admin" {
+  bucket = google_storage_bucket.terraform_state.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.cicd.email}"
 }
 
 resource "google_service_account_iam_member" "cicd_workload_identity" {
