@@ -211,16 +211,5 @@ resource "google_compute_firewall" "allow_forwarded_nat" {
   target_tags   = ["jumphost"]
 }
 
-resource "google_compute_firewall" "allow_forwarded_nat" {
-  name    = "team${var.team_id}-allow-forwarded-nat"
-  network = data.google_compute_network.team_vpc.name
 
-  allow {
-    protocol = "tcp"
-    ports    = ["80", "443"]
-  }
-
-  source_ranges = [local.subnet_cidr]
-  target_tags   = ["jumphost"]
-}
 
