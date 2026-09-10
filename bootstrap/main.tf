@@ -82,9 +82,66 @@ resource "google_project_iam_member" "cicd_network_admin" {
   member  = "serviceAccount:${google_service_account.cicd.email}"
 }
 
+resource "google_project_iam_custom_role" "cicd_firewall_admin" {
+  role_id     = "cicdFirewallAdmin"
+  title       = "CI/CD Firewall Admin"
+  description = "Scoped firewall management for CI/CD service account"
+  permissions = [
+    "compute.firewalls.create",
+    "compute.firewalls.update",
+    "compute.firewalls.delete",
+    "compute.firewalls.get",
+    "compute.firewalls.list",
+    "compute.networks.updatePolicy",
+  ]
+}
+
+resource "google_project_iam_member" "cicd_firewall_admin" {
+  project = var.project_id
+  role    = google_project_iam_custom_role.cicd_firewall_admin.id
+  member  = "serviceAccount:${google_service_account.cicd.email}"
+}
+
+resource "google_project_iam_custom_role" "cicd_instance_admin" {
+  role_id     = "cicdInstanceAdmin"
+  title       = "CI/CD Instance Admin (no IAM)"
+  description = "Instance management for CI/CD, excludes setIamPolicy/getIamPolicy"
+  permissions = [
+    "compute.instances.create",
+    "compute.instances.delete",
+    "compute.instances.get",
+    "compute.instances.list",
+    "compute.instances.update",
+    "compute.instances.setMetadata",
+    "compute.instances.setTags",
+    "compute.instances.setLabels",
+    "compute.instances.start",
+    "compute.instances.stop",
+    "compute.instances.attachDisk",
+    "compute.instances.detachDisk",
+    "compute.instances.setMachineType",
+    "compute.instances.setServiceAccount",
+    "compute.disks.create",
+    "compute.disks.use",
+    "compute.subnetworks.use",
+    "compute.zoneOperations.get",
+    "compute.resourcePolicies.create",
+    "compute.resourcePolicies.get",
+    "compute.resourcePolicies.list",
+    "compute.resourcePolicies.delete",
+    "compute.instances.setSchedule",
+  ]
+}
+
 resource "google_project_iam_member" "cicd_instance_admin" {
   project = var.project_id
-  role    = "roles/compute.instanceAdmin.v1"
+  role    = google_project_iam_custom_role.cicd_instance_admin.id
+  member  = "serviceAccount:${google_service_account.cicd.email}"
+}
+
+resource "google_project_iam_member" "cicd_editor" {
+  project = var.project_id
+  role    = "roles/editor"
   member  = "serviceAccount:${google_service_account.cicd.email}"
 }
 
@@ -99,4 +156,3 @@ resource "google_service_account_iam_member" "cicd_workload_identity" {
   role               = "roles/iam.workloadIdentityUser"
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repo}"
 }
-
