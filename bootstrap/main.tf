@@ -80,34 +80,55 @@ data "google_project" "current" {
   project_id = var.project_id
 }
 
-resource "google_project_iam_member" "cicd_compute_admin" {
-  project = var.project_id
-  role    = "roles/compute.instanceAdmin.v1"
-  member  = "serviceAccount:${google_service_account.cicd.email}"
-}
-
 resource "google_project_iam_member" "cicd_network_admin" {
   project = var.project_id
   role    = "roles/compute.networkAdmin"
   member  = "serviceAccount:${google_service_account.cicd.email}"
 }
 
-resource "google_project_iam_member" "cicd_security_admin" {
+resource "google_project_iam_member" "cicd_editor" {
   project = var.project_id
-  role    = "roles/compute.securityAdmin"
+  role    = "roles/editor"
   member  = "serviceAccount:${google_service_account.cicd.email}"
 }
 
-resource "google_storage_bucket_iam_member" "cicd_state_object_admin" {
-  bucket = google_storage_bucket.terraform_state.name
-  role   = "roles/storage.objectAdmin"
-  member = "serviceAccount:${google_service_account.cicd.email}"
+data "google_iam_policy" "terraform_state" {
+  binding {
+    role = "roles/storage.objectAdmin"
+
+    members = [
+      "serviceAccount:${google_service_account.cicd.email}"
+    ]
+  }
+
+  binding {
+    role = "roles/storage.legacyBucketOwner"
+
+    members = [
+      "projectOwner:${var.project_id}"
+    ]
+  }
+
+  binding {
+    role = "roles/storage.legacyObjectOwner"
+
+    members = [
+      "projectOwner:${var.project_id}"
+    ]
+  }
+
+  binding {
+    role = "roles/storage.objectViewer"
+
+    members = [
+      for member in var.team_members : "user:${member}"
+    ]
+  }
 }
 
-resource "google_service_account_iam_member" "cicd_compute_service_account_user" {
-  service_account_id = "projects/${var.project_id}/serviceAccounts/${data.google_project.current.number}-compute@developer.gserviceaccount.com"
-  role               = "roles/iam.serviceAccountUser"
-  member             = "serviceAccount:${google_service_account.cicd.email}"
+resource "google_storage_bucket_iam_policy" "terraform_state" {
+  bucket      = google_storage_bucket.terraform_state.name
+  policy_data = data.google_iam_policy.terraform_state.policy_data
 }
 
 resource "google_service_account_iam_member" "cicd_workload_identity" {
@@ -115,4 +136,3 @@ resource "google_service_account_iam_member" "cicd_workload_identity" {
   role               = "roles/iam.workloadIdentityUser"
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repo}"
 }
-
