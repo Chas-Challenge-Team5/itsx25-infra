@@ -76,10 +76,59 @@ resource "google_service_account" "cicd" {
   display_name = "CI/CD Pipeline Service Account"
 }
 
+data "google_project" "current" {
+  project_id = var.project_id
+}
+
+resource "google_project_iam_member" "cicd_network_admin" {
+  project = var.project_id
+  role    = "roles/compute.networkAdmin"
+  member  = "serviceAccount:${google_service_account.cicd.email}"
+}
+
 resource "google_project_iam_member" "cicd_editor" {
   project = var.project_id
   role    = "roles/editor"
   member  = "serviceAccount:${google_service_account.cicd.email}"
+}
+
+data "google_iam_policy" "terraform_state" {
+  binding {
+    role = "roles/storage.objectAdmin"
+
+    members = [
+      "serviceAccount:${google_service_account.cicd.email}"
+    ]
+  }
+
+  binding {
+    role = "roles/storage.legacyBucketOwner"
+
+    members = [
+      "projectOwner:${var.project_id}"
+    ]
+  }
+
+  binding {
+    role = "roles/storage.legacyObjectOwner"
+
+    members = [
+      "projectOwner:${var.project_id}"
+    ]
+  }
+
+  binding {
+    role = "roles/storage.objectViewer"
+
+    members = [
+      for member in var.team_members : "user:${member}"
+    ]
+  }
+}
+
+resource "google_storage_bucket_iam_policy" "terraform_state" {
+  bucket      = google_storage_bucket.terraform_state.name
+  policy_data = data.google_iam_policy.terraform_state.policy_data
 }
 
 resource "google_service_account_iam_member" "cicd_workload_identity" {
@@ -87,4 +136,3 @@ resource "google_service_account_iam_member" "cicd_workload_identity" {
   role               = "roles/iam.workloadIdentityUser"
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repo}"
 }
-
