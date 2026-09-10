@@ -17,6 +17,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Authenticate to Google Cloud
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
         uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
         with:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
@@ -30,14 +31,16 @@ jobs:
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
 
-      # Rotmodulen: nätet som pipelinen deployar.
+      # Dependabot kör utan GCP-inloggning och backend, även vid en manuell omkörning.
+      # PR-författaren används därför i villkoren, inte den som startar om jobbet.
       - name: Terraform Init (root)
-        run: terraform init
+        run: terraform init -input=false -backend=${{ github.event.pull_request.user.login != 'dependabot[bot]' }}
 
       - name: Terraform Validate (root)
         run: terraform validate
 
       - name: Terraform Plan (root)
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
         run: terraform plan -input=false -no-color
 
       # Bootstrap: körs för hand, men init och validate körs här så en trasig
@@ -48,7 +51,7 @@ jobs:
       # påslaget på kvotprojektet, vilket pipelinen inte ska konfigurera. Admin
       # kör plan lokalt innan manuell apply.
       - name: Terraform Init (bootstrap)
-        run: terraform init
+        run: terraform init -input=false -backend=${{ github.event.pull_request.user.login != 'dependabot[bot]' }}
         working-directory: bootstrap
 
       - name: Terraform Validate (bootstrap)
