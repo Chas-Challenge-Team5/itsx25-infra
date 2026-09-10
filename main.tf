@@ -124,10 +124,55 @@ resource "google_compute_instance" "jumphost" {
 
       echo 'vm.swappiness=20' > /etc/sysctl.d/01-swappiness.conf
       echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/99-ip-forward.conf
-      sysctl --system
-
       DEFAULT_IF=$(ip ro sh default | awk '/default/ {print $5}')
-      iptables -t nat -A POSTROUTING -o "$DEFAULT_IF" -s "${local.subnet_cidr}" -j MASQUERADE
+      # Own chains separate local services from forwarded client traffic.
+      # Restore only these chains; leave other host firewall rules intact.
+      cat > /usr/local/sbin/team-nat-firewall <<'SCRIPT'
+      #!/bin/bash
+      set -e
+      iptables-restore --noflush <<'RULES'
+      *filter
+      :TEAM-NAT-INPUT - [0:0]
+      :TEAM-NAT-FORWARD - [0:0]
+      -F TEAM-NAT-INPUT
+      -F TEAM-NAT-FORWARD
+      -A TEAM-NAT-INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+      -A TEAM-NAT-INPUT -s ${local.subnet_cidr} -p tcp -m multiport --dports 80,443 -j DROP
+      -A TEAM-NAT-INPUT -j RETURN
+      -A TEAM-NAT-FORWARD -m conntrack --ctstate INVALID -j DROP
+      -A TEAM-NAT-FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+      -A TEAM-NAT-FORWARD -s ${local.subnet_cidr} -p tcp -m multiport --dports 80,443 -m conntrack --ctstate NEW -j ACCEPT
+      -A TEAM-NAT-FORWARD -j DROP
+      COMMIT
+      RULES
+      iptables -C INPUT -j TEAM-NAT-INPUT 2>/dev/null || iptables -I INPUT 1 -j TEAM-NAT-INPUT
+      iptables -C FORWARD -j TEAM-NAT-FORWARD 2>/dev/null || iptables -I FORWARD 1 -j TEAM-NAT-FORWARD
+      SCRIPT
+      chmod 750 /usr/local/sbin/team-nat-firewall
+      cat > /etc/systemd/system/team-nat-firewall.service <<'UNIT'
+      [Unit]
+      Description=Filter local and forwarded jumphost traffic
+      DefaultDependencies=no
+      After=local-fs.target
+      Before=network-pre.target
+      Wants=network-pre.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/team-nat-firewall
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=multi-user.target
+      UNIT
+      systemctl daemon-reload
+      systemctl enable team-nat-firewall.service
+      systemctl restart team-nat-firewall.service
+
+      # Install filtering before enabling forwarding. Avoid duplicate NAT rules.
+      iptables -t nat -C POSTROUTING -o "$DEFAULT_IF" -s "${local.subnet_cidr}" -j MASQUERADE 2>/dev/null || \
+        iptables -t nat -A POSTROUTING -o "$DEFAULT_IF" -s "${local.subnet_cidr}" -j MASQUERADE
+      sysctl --system
     EOT
   }
 }
@@ -176,7 +221,19 @@ resource "google_compute_instance" "jumphost" {
 #   }
 # }
 
-<<<<<<< HEAD
+resource "google_compute_firewall" "allow_ssh" {
+  name    = "team${var.team_id}-allow-ssh"
+  network = data.google_compute_network.team_vpc.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+
+  source_ranges = var.ssh_source_ranges
+  target_tags   = ["jumphost"]
+}
+
 resource "google_compute_firewall" "allow_internal" {
   name    = "team${var.team_id}-allow-internal"
   network = data.google_compute_network.team_vpc.name
@@ -198,10 +255,9 @@ resource "google_compute_firewall" "allow_forwarded_nat" {
   allow {
     protocol = "tcp"
 
-    ports    = ["80", "443"]
+    ports = ["80", "443"]
   }
-
-
-
-
-
+  # GCP also admits these ports to the host; TEAM-NAT-INPUT blocks that path.
+  source_ranges = [local.subnet_cidr]
+  target_tags   = ["jumphost"]
+}
