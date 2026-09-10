@@ -1,2 +1,6 @@
 project_id = "skymill-gcp-test"
 team_id    = 1
+github_repo                = "your-organization/your-repository"
+# Hämta id och owner.id med: gh api repos/your-organization/your-repository
+github_repository_id       = "123456789"
+github_repository_owner_id = "987654321"

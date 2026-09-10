@@ -23,9 +23,17 @@ cd bootstrap
 terraform init && terraform apply
 ```
 
-Sätt sedan repo-variablerna `WORKLOAD_IDENTITY_PROVIDER` och `CICD_SERVICE_ACCOUNT` från outputen. Därefter sköter pipelinen resten: varje PR körs genom `fmt`, `validate` och `plan`, och merge till `main` kör `apply`.
+Sätt repo-variablerna `WORKLOAD_IDENTITY_PROVIDER` och `CICD_SERVICE_ACCOUNT` från outputen. PR:er kör `fmt`, `validate` och tester av WIF-villkoret utan GCP-inloggning eller stateåtkomst. Den verkliga planen körs av `deploy.yml` på `main`, vid push eller manuell start.
 
-Bootstrap appliceras aldrig av pipelinen. PR-checkarna kör `init` och `validate` mot `bootstrap/` så en trasig fil fångas, men ingen `plan`, eftersom bootstrap läser IAM och kräver API:er påslagna på kvotprojektet som pipelinen inte ska röra. En admin i teamet kör `terraform plan` och sedan `terraform apply` i `bootstrap/` för hand efter att en PR som rör den mappen har mergats. Skälet är hönan och ägget: bootstrap skapar bucketen pipelinen lagrar sitt state i, så den kan inte köras av något som redan förutsätter den. Att hålla den utanför CI betyder också att pipelinen aldrig får rätten att skriva om IAM, WIF eller state-bucketen på egen hand.
+Före införandet måste en GitHub-admin konfigurera environment `terraform-apply` med required reviewers, förhindra självgodkännande och begränsa deployment branches till `main`. Stäng även av administratörers bypass av miljöskyddet. Planjobbet avbryts om API-kontrollen inte kan bekräfta granskare och förbud mot självgodkännande. YAML-filen ensam aktiverar inte dessa skydd.
+
+Planjobbet sparar planen i den befintliga GCS-bucketen under `terraform/deploy-plans/<run-id>/<run-attempt>/deploy.tfplan`. Den publiceras inte som GitHub-artifact eller i planloggen eftersom en binär plan kan innehålla känsliga värden. Granskaren behöver läsåtkomst till objektet i GCP. Bucketens befintliga IAM gäller även här; detta löser inte dess breda åtkomst i #29/#37.
+
+Hämta planens GCS-adress och SHA-256 från körningens sammanfattning. Ladda ned med `gcloud storage cp <GCS-adress> deploy.tfplan`, kontrollera SHA-256 (PowerShell: `Get-FileHash deploy.tfplan -Algorithm SHA256`) och granska med Terraform 1.16.1: `terraform show -no-color deploy.tfplan`. Kontrollera även vilken commit planen gäller innan `terraform-apply` godkänns. Dela inte rå planutdata i publika kommentarer.
+
+Apply-jobbet hämtar samma plan, kontrollerar dess SHA-256 och använder samma commit och providerlåsning. Det gör ingen ny plan. Om state har ändrats kan apply neka en inaktuell plan; skapa då en ny körning och granska den nya planen. Planobjektet tas bort efter lyckad apply. Vid avbruten eller misslyckad körning behöver någon med GCP-behörighet radera just det kvarvarande objektet efter felsökningen. Manuella omkörningar av apply kräver också godkännande.
+
+Bootstrap appliceras aldrig av pipelinen. PR-checkarna kör `init -backend=false` och `validate` mot `bootstrap/`, men ingen plan. En behörig administratör behöver granska en separat bootstrap-plan och applicera WIF-ändringen samordnat med workflow-ändringarna. En merge uppdaterar inte WIF i GCP. Att bootstrap ligger utanför pipelinen begränsar vilka steg den normalt kör; det begränsar inte i sig CI-kontots IAM-rättigheter.
 
 Rotmodulen lokalt:
 
@@ -47,7 +55,7 @@ Fyra fynd prioriterade på risk och åtgärdade genom PR-flödet.
 | Långlivad service account-nyckel i klartext i state ([#11](../../issues/11)) | P0 | Åtgärdat, migrerat till WIF |
 | SSH-nycklar saknades i `ssh_users` ([#1](../../issues/1)) | P2 | Åtgärdat |
 
-CI/CD autentiserar mot GCP med Workload Identity Federation. Ingen nyckel finns kvar, varken i repot, i state eller som secret. Poolen är låst till det här repot med ett attribute condition, så en fork kan inte hämta en token.
+CI/CD autentiserar mot GCP med Workload Identity Federation. Konfigurationen kräver rätt repository och numeriska repo-/organisations-ID:n, `refs/heads/main`, `deploy.yml` och händelsen `push` eller `workflow_dispatch`. Villkoret gäller först när bootstrap har applicerats. Det skyddar denna WIF-väg; granskning av `main`, andra vägar till servicekontot och begränsade IAM-roller behövs också. WIF kontrollerar inte att en människa har godkänt en merge.
 
 Öppna fynd med lägre risk ligger kvar som issues: [#8](../../issues/8) till [#14](../../issues/14). Genomgången av nyckelrisken finns i [docs/service-account-nyckel.md](docs/service-account-nyckel.md).
 

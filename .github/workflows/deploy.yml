@@ -7,19 +7,45 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: terraform-deploy
   cancel-in-progress: false
 
+env:
+  # Samma privata bucket som i backend.tf. Planer ska inte publiceras som artifacts.
+  PLAN_BUCKET: team5-tfstate-f7036a24
+
 jobs:
-  terraform:
-    name: Terraform Plan & Apply
+  plan:
+    name: Terraform Plan
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
+    outputs:
+      plan_uri: ${{ steps.save.outputs.plan_uri }}
+      plan_sha256: ${{ steps.save.outputs.plan_sha256 }}
     steps:
+      - name: Verify approval environment is configured
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh api "repos/${GH_REPO}/environments/terraform-apply" | jq --exit-status '
+            any(.protection_rules[];
+              .type == "required_reviewers" and
+              .prevent_self_review == true and
+              (.reviewers | length) > 0
+            )' > /dev/null
+
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
@@ -27,19 +53,97 @@ jobs:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.CICD_SERVICE_ACCOUNT }}
 
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
           terraform_version: "1.16.1"
+          terraform_wrapper: false
 
-      - name: Terraform Init
-        run: terraform init
-
-      - name: Terraform Validate
-        run: terraform validate
+      - name: Terraform Init and Validate
+        run: |
+          terraform init -input=false -lockfile=readonly
+          terraform validate
 
       - name: Terraform Plan
-        run: terraform plan -input=false -out=tfplan
+        # Planutdata kan innehålla känsliga värden. Granskning sker via GCS.
+        run: |
+          if ! terraform plan -input=false -no-color -out=deploy.tfplan > "$RUNNER_TEMP/terraform-plan.log" 2>&1; then
+            echo "::error::Terraform plan failed. Inspect with an authorized local plan; raw plan output is not published."
+            exit 1
+          fi
 
-      - name: Terraform Apply
-        run: terraform apply -auto-approve tfplan
+      - name: Save plan for review
+        id: save
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          plan_uri="gs://${PLAN_BUCKET}/terraform/deploy-plans/${RUN_ID}/${RUN_ATTEMPT}/deploy.tfplan"
+          plan_sha256=$(sha256sum deploy.tfplan | cut -d ' ' -f 1)
+          gcloud storage cp deploy.tfplan "$plan_uri" --if-generation-match=0
+          echo "plan_uri=$plan_uri" >> "$GITHUB_OUTPUT"
+          echo "plan_sha256=$plan_sha256" >> "$GITHUB_OUTPUT"
+          {
+            echo '### Plan ready for review'
+            echo "Commit: $COMMIT_SHA"
+            echo "Private plan: $plan_uri"
+            echo "SHA-256: $plan_sha256"
+            echo 'Download with authorized GCP access, verify SHA-256, and inspect using Terraform 1.16.1 before approving terraform-apply.'
+            echo 'If rejected or expired, remove the saved GCS object. A new plan requires a new review.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  apply:
+    name: Terraform Apply (approval required)
+    needs: plan
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    # Måste konfigureras med required reviewers, prevent self-review och endast main FÖRE merge.
+    # Ett environment-namn i YAML skapar inte något godkännandekrav på egen hand.
+    environment: terraform-apply
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.CICD_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: "1.16.1"
+          terraform_wrapper: false
+
+      - name: Download and verify approved plan
+        env:
+          PLAN_URI: ${{ needs.plan.outputs.plan_uri }}
+          PLAN_SHA256: ${{ needs.plan.outputs.plan_sha256 }}
+        run: |
+          gcloud storage cp "$PLAN_URI" deploy.tfplan
+          printf '%s  deploy.tfplan\n' "$PLAN_SHA256" | sha256sum --check --strict
+
+      - name: Terraform Init
+        run: terraform init -input=false -lockfile=readonly
+
+      - name: Apply approved plan
+        run: terraform apply -input=false deploy.tfplan
+
+      - name: Remove applied plan
+        env:
+          PLAN_URI: ${{ needs.plan.outputs.plan_uri }}
+        run: gcloud storage rm "$PLAN_URI"

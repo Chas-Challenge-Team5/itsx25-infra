@@ -4,3 +4,7 @@
 # Terraform state files
 *.tfstate
 *.tfstate.*
+
+# Sparade planer kan innehålla state och känsliga värden.
+*.tfplan
+__pycache__/
