@@ -201,15 +201,7 @@ resource "google_compute_firewall" "allow_forwarded_nat" {
     ports    = ["80", "443"]
   }
 
-  source_ranges = [local.subnet_cidr]
-=======
-    ports    = ["22"]
-  }
 
-  source_ranges = [var.instructor_cidr, local.subnet_cidr]
-
-  target_tags   = ["jumphost"]
-}
 
 
 
