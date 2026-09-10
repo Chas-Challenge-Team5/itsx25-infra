@@ -176,8 +176,8 @@ resource "google_compute_instance" "jumphost" {
 #   }
 # }
 
-resource "google_compute_firewall" "allow_ssh" {
-  name    = "team${var.team_id}-allow-ssh"
+resource "google_compute_firewall" "allow_internal" {
+  name    = "team${var.team_id}-allow-internal"
   network = data.google_compute_network.team_vpc.name
 
   allow {
@@ -185,26 +185,6 @@ resource "google_compute_firewall" "allow_ssh" {
     ports    = ["22"]
   }
 
-  source_ranges = var.ssh_source_ranges
-  target_tags   = ["jumphost"]
-}
-
-resource "google_compute_firewall" "allow_internal" {
-  name    = "team${var.team_id}-allow-internal"
-  network = data.google_compute_network.team_vpc.name
-
-  allow {
-    protocol = "tcp"
-  }
-
-  allow {
-    protocol = "udp"
-  }
-
-  allow {
-    protocol = "icmp"
-  }
-
   source_ranges = [var.instructor_cidr, local.subnet_cidr]
-  target_tags   = ["jumphost", "primary"]
+  target_tags   = ["jumphost"]
 }
