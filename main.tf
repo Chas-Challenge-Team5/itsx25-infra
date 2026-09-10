@@ -176,6 +176,7 @@ resource "google_compute_instance" "jumphost" {
 #   }
 # }
 
+<<<<<<< HEAD
 resource "google_compute_firewall" "allow_internal" {
   name    = "team${var.team_id}-allow-internal"
   network = data.google_compute_network.team_vpc.name
@@ -186,6 +187,27 @@ resource "google_compute_firewall" "allow_internal" {
   }
 
   source_ranges = [var.instructor_cidr, local.subnet_cidr]
+  target_tags   = ["jumphost"]
+}
+
+
+resource "google_compute_firewall" "allow_forwarded_nat" {
+  name    = "team${var.team_id}-allow-forwarded-nat"
+  network = data.google_compute_network.team_vpc.name
+
+  allow {
+    protocol = "tcp"
+
+    ports    = ["80", "443"]
+  }
+
+  source_ranges = [local.subnet_cidr]
+=======
+    ports    = ["22"]
+  }
+
+  source_ranges = [var.instructor_cidr, local.subnet_cidr]
+
   target_tags   = ["jumphost"]
 }
 
@@ -201,3 +223,4 @@ resource "google_compute_firewall" "allow_forwarded_nat" {
   source_ranges = [local.subnet_cidr]
   target_tags   = ["jumphost"]
 }
+
