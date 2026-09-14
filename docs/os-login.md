@@ -9,7 +9,8 @@ instansspecifika IAM-tilldelningarna har applicerats i `access/`.
 Secure Boot-testet misslyckades med nuvarande bootdisk: seriell konsol visade
 `error: prohibited by secure boot policy` och `Failed to boot both default and
 fallback entries`. Aktivera inte Secure Boot igen innan bootkedjan har utretts
-och korrigerats. `enable_secure_boot` är därför som standard `false` så att
+och korrigerats i [issue #63](https://github.com/Chas-Challenge-Team5/itsx25-infra/issues/63).
+`enable_secure_boot` är därför som standard `false` så att
 OS Login kan införas separat. vTPM och integrity monitoring behålls aktiverade.
 Att GCP visar VM:n som RUNNING bevisar inte att operativsystemet har startat.
 
@@ -26,13 +27,19 @@ andra användares befintliga tilldelningar. Projektets IAM ändras inte.
 
 ## Ordning vid införande
 
-1. En administratör granskar och kör `access/` från denna branch **före merge**.
+1. En behörig användare granskar en färsk plan för `access/` **före merge**.
+   Tilldelningarna applicerades vid tidigare test; om planen saknar ändringar
+   behövs ingen ny apply. Vid avvikelser krävs separat granskning och godkänt införande.
    Rotmodulen aktiverar OS Login automatiskt vid deploy efter merge. Kör inte
    rotmodulens apply innan tilldelningen är verifierad.
 2. Administratören behöver `compute.instances.getIamPolicy` och
    `compute.instances.setIamPolicy` på jumphosten samt åtkomst till state-backenden.
-   Deploykontots nuvarande Editor-roll saknar `compute.instances.setIamPolicy`.
-   Därför har åtkomstmodulen separat state och körs aldrig med apply i CI.
+   Editor innehåller inte `compute.instances.setIamPolicy`, men kontrollen den
+   14 september visar en separat tilldelning av `InstanceIAMManager` till CI-kontot,
+   med denna behörighet och villkor för instansnamn som börjar med `team`.
+   Den effektiva behörigheten har inte funktionstestats som CI-kontot.
+   Åtkomstmodulen behåller separat state och appliceras inte av CI. Rotmodulens
+   OS Login-ändring använder metadataåtkomst, som CI-kontot har via Editor.
 3. Från repots rot, med administratörens egna inloggningsuppgifter:
 
    ```powershell
@@ -40,7 +47,8 @@ andra användares befintliga tilldelningar. Projektets IAM ändras inte.
    terraform -chdir=access init
    terraform -chdir=access plan -out=access.tfplan
    # Tilldelningarna är redan applicerade: förväntat är nu inga ändringar.
-   terraform -chdir=access apply access.tfplan
+   # Kör apply endast för granskade ändringar efter uttryckligt godkännande.
+   # terraform -chdir=access apply access.tfplan
    gcloud compute instances get-iam-policy team5-jumphost --project=itsx25-lab --zone=europe-north2-b
    ```
 
@@ -50,9 +58,13 @@ andra användares befintliga tilldelningar. Projektets IAM ändras inte.
    Dessa extra behörigheter delas inte ut av modulen.
 4. Kontrollera att den anpassade Debian-imagen stöder OS Login. Secure Boot är
    blockerat av uppstartsfelet ovan och ska lämnas avstängt tills det är löst.
-   Granska rotmodulens plan före merge: OS Login och Shielded VM är avsiktliga
-   ändringar; oväntad ersättning av VM:n ska utredas. Planera för stopp/omstart.
-5. Först därefter mergas ändringen så att deploy aktiverar OS Login, med
+   Granska rotmodulens plan före merge: OS Login aktiveras och metadata-nycklarna
+   tas bort. vTPM/integrity monitoring ska behållas och Secure Boot ska vara av.
+   Utred all oväntad VM-ersättning eller stopp/start innan införandet.
+5. Samordna införandet med #28/PR #62: om det nya deployflödet har mergats
+   krävs granskning av den privata planen och environment-godkännande före apply.
+   Behåll access- och IAP-tester när PR-workflowen sammanfogas; återinför inte
+   GCP-autentisering i PR-jobbet efter #62. Inför sedan OS Login, med
    `enable_secure_boot = false`. Secure Boot kräver ett separat verifierat införande.
    Håll administratören tillgänglig tills alla fem har testat en ny inloggning:
 
@@ -107,3 +119,21 @@ Testerna använder en mockad provider och ändrar inga resurser i GCP.
 
 Källor: [OS Login](https://docs.cloud.google.com/compute/docs/oslogin/set-up-oslogin),
 [instans-IAM i Terraform](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_instance_iam).
+
+## Kontroll inför PR – 14 september 2026
+
+Efter uppdatering mot main `271872a` visar en verklig root-plan endast update av
+jumphostens metadata: ta bort `ssh-keys` och sätta `enable-oslogin = TRUE`.
+Ingen VM-ersättning, ändring av startup-script, brandvägg eller Shielded-inställningar
+planeras. Access-planen visar inga ändringar och fem instansspecifika grants finns.
+Planerna gjordes med ett användarkonto, inte CI-kontot, och har inte applicerats.
+
+Instruktörens synliga Owner-tilldelning innehåller OS Login/OS Admin Login och
+compute.projects.get. Detta ersätter inte ett praktiskt test av instruktörens
+OS Login-profil och nya inloggning. Behåll denna kontroll inför övergången.
+
+Återställningsunderlag finns lokalt för samma VM-ID; tidigare SSH-nyckelbackup
+matchar aktuell metadata och snapshoten är READY. Aktivt användarkonto har
+metadata- och instans-IAM-skrivning. Ta en färsk backup och granska en ny plan
+med statelås vid det godkända införandet. Testresultat för hela teamet och
+instruktören återstår; ingen permanent OS Login-aktivering har gjorts här.

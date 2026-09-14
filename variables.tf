@@ -33,7 +33,7 @@ variable "instructor_cidr" {
 }
 
 variable "enable_secure_boot" {
-  description = "Enable Secure Boot after OS Login has been verified; changing this requires a VM stop/start."
+  description = "Keep Secure Boot disabled until the boot failure tracked in issue #63 is resolved; changing this requires a VM stop/start."
   type        = bool
   default     = false
 }
