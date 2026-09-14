@@ -14,6 +14,6 @@ variable "github_repo" {
 }
 
 variable "team_members" {
-  description = "Chas Academy-mailadresser för lagmedlemmar med läsrätt till Terraform state"
+  description = "Chas Academy-mailadresser för lagmedlemmar som förvaltar bucketen och Terraform state"
   type        = list(string)
 }

@@ -120,6 +120,18 @@ data "google_iam_policy" "terraform_state" {
       for member in var.team_members : "user:${member}"
     ]
   }
+
+  # objectAdmin räcker bara till objekten. Utan den här bindningen tappar teamet
+  # storage.buckets.get, getIamPolicy och setIamPolicy i samma stund som policyn
+  # ersätter projectEditor. Då går bootstrap varken att planera eller rulla
+  # tillbaka av någon annan än projektägarna.
+  binding {
+    role = "roles/storage.legacyBucketOwner"
+
+    members = [
+      for member in var.team_members : "user:${member}"
+    ]
+  }
 }
 
 resource "google_storage_bucket_iam_policy" "terraform_state" {
