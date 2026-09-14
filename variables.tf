@@ -39,9 +39,3 @@ variable "ssh_users" {
     public_key = string
   }))
 }
-
-variable "ssh_source_ranges" {
-  description = "Source ranges allowed to reach the jumphost on tcp/22. Restricted to Google Cloud IAP."
-  type        = list(string)
-  default     = ["35.235.240.0/20"]
-}
