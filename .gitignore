@@ -4,4 +4,6 @@
 # Terraform state files
 *.tfstate
 *.tfstate.*
+
+# Sparade planer kan innehålla känsliga värden.
 *.tfplan

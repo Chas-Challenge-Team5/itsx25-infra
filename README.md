@@ -11,6 +11,7 @@ En VPC per lag med ett `/24`-subnät (`10.0.5.0/24`). En jumphost med extern IP 
 - `main.tf` nät, routes, brandvägg, jumphost
 - `backend.tf` GCS-backend för state
 - `bootstrap/` service account för CI/CD, state-bucketen och Workload Identity Federation
+- `iap-access/` separat förvaltade, villkorade IAP-tilldelningar för teamet; state-prefix `terraform/iap-access`, ingen automatisk apply. Tilldelningen gäller jumphostens privata IP och TCP/22. Kontrollera IP-återanvändning/överlappning innan apply. Befintlig SSH och OS Login hanteras separat.
 - `docs/` skriftliga underlag från granskningen
 - `.github/workflows/` PR-checkar och deploy
 
@@ -28,7 +29,7 @@ cd bootstrap
 terraform init && terraform apply
 ```
 
-Sätt sedan repo-variablerna `WORKLOAD_IDENTITY_PROVIDER` och `CICD_SERVICE_ACCOUNT` från outputen. Därefter sköter pipelinen resten: varje PR körs genom `fmt`, `validate` och `plan`, och merge till `main` kör `apply`.
+Sätt sedan repo-variablerna `WORKLOAD_IDENTITY_PROVIDER` och `CICD_SERVICE_ACCOUNT` från outputen. Därefter sköter pipelinen resten: vanliga PR:er körs genom `fmt`, `validate` och `plan`, och merge till `main` kör `apply`. Dependabots PR:er kör `fmt` och `validate` med backend avstängd, utan GCP-inloggning eller plan mot miljön.
 
 Bootstrap appliceras aldrig av pipelinen. PR-checkarna kör `init` och `validate` mot `bootstrap/` så en trasig fil fångas, men ingen `plan`, eftersom bootstrap läser IAM och kräver API:er påslagna på kvotprojektet som pipelinen inte ska röra. En admin i teamet kör `terraform plan` och sedan `terraform apply` i `bootstrap/` för hand efter att en PR som rör den mappen har mergats. Skälet är hönan och ägget: bootstrap skapar bucketen pipelinen lagrar sitt state i, så den kan inte köras av något som redan förutsätter den. Att hålla den utanför CI betyder också att pipelinen aldrig får rätten att skriva om IAM, WIF eller state-bucketen på egen hand.
 

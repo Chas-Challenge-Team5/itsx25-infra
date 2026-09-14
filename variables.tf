@@ -32,8 +32,8 @@ variable "instructor_cidr" {
   default     = "10.0.0.0/24"
 }
 
-variable "ssh_source_ranges" {
-  description = "Source ranges allowed to reach the jumphost on tcp/22. Snäv in denna till lagets faktiska IP-adresser när de är kända."
-  type        = list(string)
-  default     = ["0.0.0.0/0"]
+variable "enable_secure_boot" {
+  description = "Enable Secure Boot after OS Login has been verified; changing this requires a VM stop/start."
+  type        = bool
+  default     = false
 }
