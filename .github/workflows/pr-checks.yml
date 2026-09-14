@@ -31,6 +31,9 @@ jobs:
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
 
+      - name: Check Secure Boot migration script syntax
+        run: bash -n scripts/prepare-secure-boot.sh
+
       # Dependabot kör utan GCP-inloggning och backend, även vid en manuell omkörning.
       # PR-författaren används därför i villkoren, inte den som startar om jobbet.
       - name: Terraform Init (root)
