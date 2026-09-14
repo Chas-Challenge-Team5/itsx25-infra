@@ -76,10 +76,6 @@ resource "google_service_account" "cicd" {
   display_name = "CI/CD Pipeline Service Account"
 }
 
-data "google_project" "current" {
-  project_id = var.project_id
-}
-
 resource "google_project_iam_member" "cicd_network_admin" {
   project = var.project_id
   role    = "roles/compute.networkAdmin"
@@ -118,7 +114,7 @@ data "google_iam_policy" "terraform_state" {
   }
 
   binding {
-    role = "roles/storage.objectViewer"
+    role = "roles/storage.objectAdmin"
 
     members = [
       for member in var.team_members : "user:${member}"
