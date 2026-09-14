@@ -87,15 +87,27 @@ resource "google_service_account" "cicd" {
 }
 
 resource "google_project_iam_member" "cicd_network_admin" {
+  count   = var.retire_legacy_cicd_roles ? 0 : 1
   project = var.project_id
   role    = "roles/compute.networkAdmin"
   member  = "serviceAccount:${google_service_account.cicd.email}"
 }
 
 resource "google_project_iam_member" "cicd_editor" {
+  count   = var.retire_legacy_cicd_roles ? 0 : 1
   project = var.project_id
   role    = "roles/editor"
   member  = "serviceAccount:${google_service_account.cicd.email}"
+}
+
+moved {
+  from = google_project_iam_member.cicd_network_admin
+  to   = google_project_iam_member.cicd_network_admin[0]
+}
+
+moved {
+  from = google_project_iam_member.cicd_editor
+  to   = google_project_iam_member.cicd_editor[0]
 }
 
 data "google_iam_policy" "terraform_state" {

@@ -58,6 +58,10 @@ jobs:
         run: terraform validate
         working-directory: bootstrap
 
+      - name: Terraform Test (bootstrap, mocked)
+        run: terraform test
+        working-directory: bootstrap
+
       # IAP-modulen förvaltas separat och ska inte appliceras av deploy-jobbet.
       - name: Terraform Init (iap-access, no backend)
         run: terraform init -input=false -backend=false -lockfile=readonly
