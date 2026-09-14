@@ -11,6 +11,7 @@ En VPC per lag med ett `/24`-subnät (`10.0.5.0/24`). En jumphost med extern IP 
 - `main.tf` nät, routes, brandvägg, jumphost
 - `backend.tf` GCS-backend för state
 - `bootstrap/` service account för CI/CD, state-bucketen och Workload Identity Federation
+- `iap-access/` separat förvaltade, villkorade IAP-tilldelningar för teamet; state-prefix `terraform/iap-access`, ingen automatisk apply. Tilldelningen gäller jumphostens privata IP och TCP/22. Kontrollera IP-återanvändning/överlappning innan apply. Befintlig SSH och OS Login hanteras separat.
 - `docs/` skriftliga underlag från granskningen
 - `.github/workflows/` PR-checkar och deploy
 
