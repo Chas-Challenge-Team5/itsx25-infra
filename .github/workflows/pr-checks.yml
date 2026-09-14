@@ -31,6 +31,9 @@ jobs:
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
 
+      - name: Test Headscale configuration and user setup (isolated)
+        run: python3 headscale/check.py
+
       # Dependabot kör utan GCP-inloggning och backend, även vid en manuell omkörning.
       # PR-författaren används därför i villkoren, inte den som startar om jobbet.
       - name: Terraform Init (root)
