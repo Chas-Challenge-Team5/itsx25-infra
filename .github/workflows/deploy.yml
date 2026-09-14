@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # Samma privata bucket som i backend.tf. Planer ska inte publiceras som artifacts.
+  # Plans stay in the private state bucket, never in public artifacts.
   PLAN_BUCKET: team5-tfstate-f7036a24
 
 jobs:
@@ -24,31 +24,21 @@ jobs:
     permissions:
       contents: read
       id-token: write
-      actions: read
     outputs:
       plan_uri: ${{ steps.save.outputs.plan_uri }}
       plan_sha256: ${{ steps.save.outputs.plan_sha256 }}
     steps:
-      - name: Verify approval environment is configured
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          gh api "repos/${GH_REPO}/environments/terraform-apply" | jq --exit-status '
-            any(.protection_rules[];
-              .type == "required_reviewers" and
-              .prevent_self_review == true and
-              (.reviewers | length) > 0
-            )' > /dev/null
-
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
 
+      - name: Verify approval environment is configured
+        run: python scripts/check_apply_environment.py
+
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.CICD_SERVICE_ACCOUNT }}
@@ -57,7 +47,7 @@ jobs:
         uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: "1.16.1"
           terraform_wrapper: false
@@ -68,7 +58,7 @@ jobs:
           terraform validate
 
       - name: Terraform Plan
-        # Planutdata kan innehålla känsliga värden. Granskning sker via GCS.
+        # Plan output may contain secrets; reviewers inspect the private GCS object.
         run: |
           if ! terraform plan -input=false -no-color -out=deploy.tfplan > "$RUNNER_TEMP/terraform-plan.log" 2>&1; then
             echo "::error::Terraform plan failed. Inspect with an authorized local plan; raw plan output is not published."
@@ -101,21 +91,20 @@ jobs:
     needs: plan
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
-    # Måste konfigureras med required reviewers, prevent self-review och endast main FÖRE merge.
-    # Ett environment-namn i YAML skapar inte något godkännandekrav på egen hand.
+    # Configure reviewers, prevent self-review, main-only access and no admin bypass before merge.
     environment: terraform-apply
     permissions:
       contents: read
       id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.CICD_SERVICE_ACCOUNT }}
@@ -124,7 +113,7 @@ jobs:
         uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: "1.16.1"
           terraform_wrapper: false

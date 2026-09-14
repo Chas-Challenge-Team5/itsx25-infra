@@ -5,6 +5,7 @@
 *.tfstate
 *.tfstate.*
 
-# Sparade planer kan innehålla state och känsliga värden.
+# Sparade planer kan innehålla känsliga värden.
 *.tfplan
+
 __pycache__/

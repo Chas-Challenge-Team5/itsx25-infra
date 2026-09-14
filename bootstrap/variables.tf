@@ -13,6 +13,11 @@ variable "github_repo" {
   type        = string
 }
 
+variable "team_members" {
+  description = "Chas Academy email addresses of team members managing the bucket and Terraform state"
+  type        = list(string)
+}
+
 variable "github_repository_id" {
   description = "Immutable numeric GitHub repository ID, represented as a string"
   type        = string

@@ -1,0 +1,8 @@
+project_id     = "your-project"
+zone           = "europe-north2-b"
+instance_name  = "your-jumphost"
+destination_ip = "10.0.5.2"
+
+iap_users = [
+  "user:person@example.com",
+]
