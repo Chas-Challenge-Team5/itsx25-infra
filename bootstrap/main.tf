@@ -49,6 +49,16 @@ resource "google_storage_bucket" "terraform_state" {
   }
 }
 
+
+resource "google_project_iam_audit_config" "storage_data_read" {
+  project = var.project_id
+  service = "storage.googleapis.com"
+
+  audit_log_config {
+    log_type = "DATA_READ"
+  }
+}
+
 resource "google_iam_workload_identity_pool" "github" {
   workload_identity_pool_id = "team${var.team_id}-github-pool"
   display_name              = "GitHub Actions Pool"
