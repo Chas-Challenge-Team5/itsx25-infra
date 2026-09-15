@@ -6,7 +6,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   terraform-checks:
@@ -16,45 +15,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Authenticate to Google Cloud
-        if: github.event.pull_request.user.login != 'dependabot[bot]'
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
-        with:
-          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.CICD_SERVICE_ACCOUNT }}
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: "1.16.1"
+          terraform_wrapper: false
 
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
 
-      - name: Check Secure Boot migration script syntax
-        run: bash -n scripts/prepare-secure-boot.sh
-
-      # Dependabot kör utan GCP-inloggning och backend, även vid en manuell omkörning.
-      # PR-författaren används därför i villkoren, inte den som startar om jobbet.
+      # Every PR runs without cloud credentials or backend access.
       - name: Terraform Init (root)
-        run: terraform init -input=false -backend=${{ github.event.pull_request.user.login != 'dependabot[bot]' }}
+        run: terraform init -input=false -backend=false -lockfile=readonly
 
       - name: Terraform Validate (root)
         run: terraform validate
 
-      - name: Terraform Plan (root)
-        if: github.event.pull_request.user.login != 'dependabot[bot]'
-        run: terraform plan -input=false -no-color
-
-      # Bootstrap: körs för hand, men init och validate körs här så en trasig
-      # bootstrap/main.tf inte glider förbi grön CI som förr (#9). init laddar
-      # konfigen och dör på parse-fel, validate är syntaxgrinden. fmt kontrollerar
-      # bara formatering och stoppar inte HCL som inte går att parsa.
-      # Ingen plan mot bootstrap: den läser IAM och kräver att IAM-API:et är
-      # påslaget på kvotprojektet, vilket pipelinen inte ska konfigurera. Admin
-      # kör plan lokalt innan manuell apply.
+      # Bootstrap is applied separately; PR checks never access its state.
       - name: Terraform Init (bootstrap)
-        run: terraform init -input=false -backend=${{ github.event.pull_request.user.login != 'dependabot[bot]' }}
+        run: terraform init -input=false -backend=false -lockfile=readonly
         working-directory: bootstrap
 
       - name: Terraform Validate (bootstrap)
@@ -65,6 +44,9 @@ jobs:
       - name: Terraform Init (iap-access, no backend)
         run: terraform init -input=false -backend=false -lockfile=readonly
         working-directory: iap-access
+
+      - name: Check Secure Boot migration script syntax
+        run: bash -n scripts/prepare-secure-boot.sh
 
       - name: Terraform Validate and Test (iap-access, mocked)
         run: |

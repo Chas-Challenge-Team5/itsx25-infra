@@ -1,9 +1,6 @@
 project_id = "skymill-gcp-test"
 team_id    = 1
 
-# Prepare and boot-test a signed kernel before changing this to true.
-enable_secure_boot = false
-
 ssh_users = [
   {
     username   = "dehe"

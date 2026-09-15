@@ -39,9 +39,3 @@ variable "ssh_users" {
     public_key = string
   }))
 }
-
-variable "enable_secure_boot" {
-  description = "Enable only after preparing and boot-testing a signed kernel. Changing this setting requires a VM stop/start; a fresh VM from the current lab image must be prepared first."
-  type        = bool
-  default     = false
-}
