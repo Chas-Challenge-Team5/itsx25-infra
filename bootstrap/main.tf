@@ -105,6 +105,12 @@ data "google_iam_policy" "terraform_state" {
     members = [
       "serviceAccount:${google_service_account.cicd.email}"
     ]
+
+    condition {
+      title       = "cicd_root_state_only"
+      description = "Allow CI/CD to manage only the root Terraform state"
+      expression  = "resource.name.startsWith('projects/_/buckets/${google_storage_bucket.terraform_state.name}/objects/terraform/state/')"
+    }
   }
 
   binding {
