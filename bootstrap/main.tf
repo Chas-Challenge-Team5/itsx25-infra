@@ -78,7 +78,13 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     issuer_uri = "https://token.actions.githubusercontent.com"
   }
 
-  attribute_condition = "assertion.repository == '${var.github_repo}'"
+  # En PR kan ändra sin workflow. Säkerhetsgränsen måste därför ligga i GCP.
+  attribute_condition = trimspace(templatefile("${path.module}/github-wif-condition.cel.tftpl", {
+    repository    = jsonencode(var.github_repo)
+    repository_id = jsonencode(var.github_repository_id)
+    owner_id      = jsonencode(var.github_repository_owner_id)
+    workflow_ref  = jsonencode("${var.github_repo}/.github/workflows/deploy.yml@refs/heads/main")
+  }))
 }
 
 resource "google_service_account" "cicd" {
