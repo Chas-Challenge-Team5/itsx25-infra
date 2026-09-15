@@ -8,7 +8,7 @@
 
 Terraform för Team 5:s labbmiljö i Google Cloud. Infrastrukturen förvaltas genom GitHub Actions, med Terraform-state i Google Cloud Storage.
 
-Planerat arbete, säkerhetsfynd och verifieringsresultat finns i [Issues](https://github.com/Chas-Challenge-Team5/itsx25-infra/issues). Ändringar granskas i [Pull requests](https://github.com/Chas-Challenge-Team5/itsx25-infra/pulls).
+Planerat arbete, säkerhetsfynd och verifieringsresultat finns i [Issues](https://github.com/Chas-Challenge-Team5/itsx25-infra/issues?q=is%3Aissue). Ändringar granskas i [Pull requests](https://github.com/Chas-Challenge-Team5/itsx25-infra/pulls).
 
 ## Miljön
 
@@ -73,10 +73,10 @@ Routes för `0.0.0.0/0` och `100.64.0.0/10` pekar på jumphosten för maskiner m
 | `outputs.tf` | Utdata från rotmodulen |
 | `backend.tf` | Rotmodulens GCS-backend |
 | `bootstrap/` | CI-servicekonto, IAM, WIF och state-bucket |
-| `access/` | Instansspecifik OS Login- och sudoåtkomst samt mockade tester |
+| `access/` | OS Login/sudo på jumphosten, åtkomst till dess tjänstekonto och mockade tester |
 | `iap-access/` | Teamets villkorade IAP-behörigheter och mockade tester |
 | `scripts/` | Kontroll av deploygodkännande och manuell förberedelse för Secure Boot |
-| `tests/` | Tester för WIF-villkoret och kontrollen av deploygodkännande |
+| `tests/` | Tester för WIF, CI:s objektåtkomst och kontrollen av deploygodkännande |
 | `.github/workflows/` | PR-kontroller och deploy |
 | `.github/dependabot.yml` | Bevakning av GitHub Actions, Terraform i roten och bootstrap samt Python-testberoenden |
 | `docs/` | Fördjupande underlag |
@@ -94,9 +94,11 @@ Alla fyra Terraform-rötter använder bucketen `team5-tfstate-f7036a24`, med egn
 
 Bootstrap, OS Login-åtkomst och IAP-åtkomst förvaltas separat. Deploy-workflowen applicerar endast rotmodulen, efter att en granskare har godkänt dess sparade plan. Granska en plan i respektive katalog inför ändringar i de separat förvaltade modulerna; en plan utan ändringar kräver ingen ny apply.
 
+Bootstrap-konfigurationen begränsar CI-kontots objektåtkomst till `terraform/state/` och `terraform/deploy-plans/`. Kontot får också lista objekt i hela bucketen, men listningsrollen ger ingen åtkomst till deras innehåll. Bucketpolicyn införs genom separat bootstrap-apply.
+
 Backend-konfigurationen förutsätter att state-bucketen redan finns. En helt ny miljö kräver därför separat etablering av backend.
 
-IAP-tilldelningarna gäller jumphostens privata IP och TCP/22. De ger tunnelåtkomst. OS Login hanterar SSH-inloggningen genom användarens Google-konto och publika SSH-nyckel i OS Login-profilen. `access/` tilldelar de fem användarna OS Admin Login på jumphosten, vilket ger sudo där. Modulen tilldelar även Service Account User på jumphostens särskilda tjänstekonto, som krävs för OS Login när det kontot är kopplat till VM:n.
+IAP-tilldelningarna gäller jumphostens privata IP och TCP/22. De ger tunnelåtkomst. OS Login hanterar SSH-inloggningen genom användarens Google-konto och publika SSH-nyckel i OS Login-profilen. `access/` tilldelar de fem användarna OS Admin Login på jumphosten, vilket ger sudo där. Jumphosten har ett särskilt tjänstekonto kopplat till sig; `access/` tilldelar även den Service Account User-behörighet som användarna behöver för att logga in på en VM med tjänstekonto.
 
 Verifiera IAM-tilldelningarna och användarnas OS Login-profiler innan OS Login aktiveras. Kontrollera instansens IAM vid VM-ersättning och IAP-tilldelningarna vid byte eller återanvändning av IP-adress. Införande och återställning beskrivs i [OS Login-underlaget](docs/os-login.md).
 
@@ -106,7 +108,7 @@ Secure Boot är avstängt som standard. Det kräver separat förberedelse av en 
 
 GitHub Actions autentiserar mot GCP genom Workload Identity Federation. Repo-variablerna `WORKLOAD_IDENTITY_PROVIDER` och `CICD_SERVICE_ACCOUNT` anger provider och servicekonto. Värdena hämtas från bootstrap-modulens utdata.
 
-Alla PR:er mot main, även Dependabots, kör formatkontroll, validering och tester utan GCP-autentisering eller backendåtkomst. Kontrollerna omfattar de fyra Terraform-rötterna, mockade åtkomsttester, WIF- och godkännandetester samt syntaxkontroll av Secure Boot-scriptet. PR-jobbet kör ingen plan mot miljön.
+Alla PR:er mot main, även Dependabots, kör formatkontroll, validering och tester utan GCP-autentisering eller backendåtkomst. Kontrollerna omfattar de fyra Terraform-rötterna, mockade åtkomsttester, tester av WIF- och lagringsvillkor, godkännandeskydd samt syntaxkontroll av Secure Boot-scriptet. PR-jobbet kör ingen plan mot miljön.
 
 Vid push till main skapar deploy-workflowen en plan i den privata state-bucketen, under `terraform/deploy-plans/`. Körningens sammanfattning visar commit, planens adress och SHA-256. En annan granskare granskar planen och godkänner `terraform-apply` innan samma sparade plan appliceras. Planens SHA-256 kontrolleras före apply och planobjektet tas bort efter lyckad apply. Planfiler publiceras inte som GitHub-artifacts.
 
@@ -120,10 +122,12 @@ Godkända CI-kontroller behöver kompletteras med funktionstest vid exempelvis �
 
 Beskriv arbetet i en issue, gör ändringarna på en branch och öppna en PR mot main. Granska ändringen och CI-resultatet före merge. Dokumentera lösning, verifiering och kvarstående arbete i tillhörande issue eller PR.
 
-Main skyddas av ett aktivt ruleset som kräver två godkännanden och godkänd `Format & Validate`. Nya ändringar kräver förnyad granskning, inklusive godkännande från någon annan än den som senast pushade. GitHub Actions är låsta till fullständiga commit-SHA:er och Dependabot bevakar beroenden. Deploy använder WIF för kortlivade inloggningsuppgifter.
+Main skyddas av ett aktivt ruleset som kräver minst ett godkännande och godkänd `Format & Validate`. Nya ändringar kräver förnyad granskning, inklusive godkännande från någon annan än den som senast pushade. GitHub Actions är låsta till fullständiga commit-SHA:er och Dependabot bevakar beroenden. Deploy använder WIF för kortlivade inloggningsuppgifter.
 
-README beskriver hur projektet används. Aktuell arbetsstatus och säkerhetsfynd förvaltas i GitHub Issues.
+Säkerhetsfynd, åtgärder och verifieringsresultat finns samlade bland [säkerhetsärendena i GitHub Issues](https://github.com/Chas-Challenge-Team5/itsx25-infra/issues?q=is%3Aissue%20label%3Asecurity). Länken visar både öppna och stängda ärenden. Varje issue beskriver risken, arbetet och vad som har verifierats; aktuell status följs där.
 
 ## Team
 
 Mattej (Product Owner), Viktor (Scrum Master), Abdi, Adam och Armin.
+
+*Senast uppdaterad: 15 september 2026.*
