@@ -1,6 +1,6 @@
 """Fail closed unless the public repository's apply environment is protected.
 
-Public REST reads do not need a token with repository administration rights.
+Use GITHUB_TOKEN with actions:read for authenticated environment checks.
 API errors, rate limits and unexpected responses stop the workflow before auth.
 """
 
@@ -32,7 +32,13 @@ def check(environment, branches):
 
 
 def get(url):
-    request = Request(url, headers={"Accept": "application/vnd.github+json"})
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if not token:
+        raise ValueError("GITHUB_TOKEN is required to verify the apply environment.")
+    request = Request(url, headers={
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+    })
     with urlopen(request, timeout=30) as response:
         return json.load(response)
 

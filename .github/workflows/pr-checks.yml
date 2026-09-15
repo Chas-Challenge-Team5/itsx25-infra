@@ -45,6 +45,7 @@ jobs:
           python -m pip install -r tests/requirements.txt
           python -m unittest discover -s tests -v
 
+      # IAP-modulen förvaltas separat och ska inte appliceras av deploy-jobbet.
       - name: Terraform Init (iap-access, no backend)
         run: terraform init -input=false -backend=false -lockfile=readonly
         working-directory: iap-access

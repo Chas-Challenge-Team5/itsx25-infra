@@ -24,9 +24,9 @@ cd bootstrap
 terraform init && terraform apply
 ```
 
-Alla PR:er kör formatkontroll, backendfri validering och tester utan GCP-inloggning. Deploy på `main` skapar en plan i den privata GCS-bucketen. Planens adress och SHA-256 visas i körningens sammanfattning; en annan granskare granskar planen och godkänner environment `terraform-apply` innan samma sparade plan appliceras. Inga planfiler publiceras som GitHub-artifacts.
+Sätt sedan repo-variablerna `WORKLOAD_IDENTITY_PROVIDER` och `CICD_SERVICE_ACCOUNT` från outputen. Därefter sköter pipelinen resten: vanliga PR:er körs genom `fmt`, `validate` och `plan`, och merge till `main` kör `apply`. Dependabots PR:er kör `fmt` och `validate` med backend avstängd, utan GCP-inloggning eller plan mot miljön.
 
-Bootstrap appliceras separat. WIF-ändringen behöver appliceras samordnat med workflow-ändringarna; merge uppdaterar inte WIF i GCP. Environment måste ha reviewers, förbud mot självgodkännande, endast `main` och avstängd admin-bypass. Avbrutna planobjekt behöver städas av en behörig användare.
+Bootstrap appliceras aldrig av pipelinen. PR-checkarna kör `init` och `validate` mot `bootstrap/` så en trasig fil fångas, men ingen `plan`, eftersom bootstrap läser IAM och kräver API:er påslagna på kvotprojektet som pipelinen inte ska röra. En admin i teamet kör `terraform plan` och sedan `terraform apply` i `bootstrap/` för hand efter att en PR som rör den mappen har mergats. Skälet är hönan och ägget: bootstrap skapar bucketen pipelinen lagrar sitt state i, så den kan inte köras av något som redan förutsätter den. Att hålla den utanför CI betyder också att pipelinen aldrig får rätten att skriva om IAM, WIF eller state-bucketen på egen hand.
 
 Rotmodulen lokalt:
 
@@ -48,7 +48,7 @@ Fyra fynd prioriterade på risk och åtgärdade genom PR-flödet.
 | Långlivad service account-nyckel i klartext i state ([#11](../../issues/11)) | P0 | Åtgärdat, migrerat till WIF |
 | SSH-nycklar saknades i `ssh_users` ([#1](../../issues/1)) | P2 | Åtgärdat |
 
-CI/CD använder Workload Identity Federation. Efter separat bootstrap-apply krävs rätt repo och numeriska repo-/organisations-ID:n, `main`, `deploy.yml` samt push eller manuell start. Skyddet begränsar denna autentiseringsväg; CI-kontots roller hanteras separat.
+CI/CD autentiserar mot GCP med Workload Identity Federation. Ingen nyckel finns kvar, varken i repot, i state eller som secret. Poolen är låst till det här repot med ett attribute condition, så en fork kan inte hämta en token.
 
 Öppna fynd med lägre risk ligger kvar som issues: [#8](../../issues/8) till [#14](../../issues/14). Genomgången av nyckelrisken finns i [docs/service-account-nyckel.md](docs/service-account-nyckel.md).
 
