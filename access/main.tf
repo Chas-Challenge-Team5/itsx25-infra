@@ -26,3 +26,13 @@ resource "google_compute_instance_iam_member" "os_admin_logins" {
   role          = "roles/compute.osAdminLogin"
   member        = each.value
 }
+
+# OS Login also requires Service Account User when #46 attaches this account.
+# Manage these grants separately before enabling OS Login with the attached account.
+resource "google_service_account_iam_member" "jumphost_service_account_users" {
+  for_each = var.os_admin_users
+
+  service_account_id = "projects/itsx25-lab/serviceAccounts/team5-jumphost@itsx25-lab.iam.gserviceaccount.com"
+  role               = "roles/iam.serviceAccountUser"
+  member             = each.value
+}

@@ -1,5 +1,5 @@
 variable "os_admin_users" {
-  description = "Google user identities granted sudo through OS Login on Team 5's jumphost."
+  description = "Google user identities granted OS Login sudo access on Team 5's jumphost and Service Account User on its dedicated service account."
   type        = set(string)
 
   validation {

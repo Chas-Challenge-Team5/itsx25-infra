@@ -29,3 +29,23 @@ run "reject_invalid_identity" {
   }
   expect_failures = [var.os_admin_users]
 }
+
+run "service_account_access" {
+  command = plan
+
+  assert {
+    condition     = length(google_service_account_iam_member.jumphost_service_account_users) == 5
+    error_message = "All five team members need Service Account User when the jumphost has a service account."
+  }
+
+  assert {
+    condition = alltrue([
+      for identity, grant in google_service_account_iam_member.jumphost_service_account_users :
+      grant.service_account_id == "projects/itsx25-lab/serviceAccounts/team5-jumphost@itsx25-lab.iam.gserviceaccount.com" &&
+      grant.role == "roles/iam.serviceAccountUser" &&
+      grant.member == identity &&
+      grant.member == google_compute_instance_iam_member.os_admin_logins[identity].member
+    ])
+    error_message = "Service Account User must target only the jumphost account and the same identities as OS Login."
+  }
+}
