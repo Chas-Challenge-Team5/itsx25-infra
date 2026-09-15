@@ -31,6 +31,13 @@ jobs:
       - name: Terraform Validate (root)
         run: terraform validate
 
+      - name: Test firewall rules (mocked, no GCP access)
+        run: terraform test
+
+      - name: Test host firewall and NAT in isolated networks
+        timeout-minutes: 3
+        run: sudo env "PATH=$PATH" python3 tests/network_firewall.py
+
       # Bootstrap is applied separately; PR checks never access its state.
       - name: Terraform Init (bootstrap)
         run: terraform init -input=false -backend=false -lockfile=readonly

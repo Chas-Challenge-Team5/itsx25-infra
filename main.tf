@@ -18,6 +18,12 @@ locals {
   jumphost_zone            = coalesce(var.jumphost_zone, data.google_compute_zones.available.names[local.team_zone])
   primary_zone             = coalesce(var.primary_zone, data.google_compute_zones.available.names[local.team_zone])
   subnet_cidr              = "10.0.${var.team_id}.0/24"
+  tailnet_cidr             = "100.64.0.0/10"
+  nat_tcp_ports            = ["80", "443"]
+  nat_firewall_script = templatefile("${path.module}/templates/team-nat-firewall.sh.tftpl", {
+    subnet_cidr   = local.subnet_cidr
+    nat_tcp_ports = join(",", local.nat_tcp_ports)
+  })
 }
 
 data "google_compute_zones" "available" {
@@ -59,7 +65,7 @@ resource "google_compute_route" "internet_via_jumphost" {
 resource "google_compute_route" "tailnet_via_jumphost" {
   name              = "team${var.team_id}-tailnet-via-jumphost"
   network           = data.google_compute_network.team_vpc.id
-  dest_range        = "100.64.0.0/10"
+  dest_range        = local.tailnet_cidr
   priority          = 800
   next_hop_instance = google_compute_instance.jumphost.self_link
   tags              = ["no-external-ip"]
@@ -131,10 +137,31 @@ resource "google_compute_instance" "jumphost" {
 
       echo 'vm.swappiness=20' > /etc/sysctl.d/01-swappiness.conf
       echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/99-ip-forward.conf
-      sysctl --system
+      # Encode the exact tested helper so nested heredoc indentation cannot corrupt it.
+      echo '${base64encode(local.nat_firewall_script)}' | base64 --decode > /usr/local/sbin/team-nat-firewall
+      chmod 750 /usr/local/sbin/team-nat-firewall
+      cat > /etc/systemd/system/team-nat-firewall.service <<'UNIT'
+      [Unit]
+      Description=Filter local and forwarded jumphost traffic
+      DefaultDependencies=no
+      After=local-fs.target
+      Before=network-pre.target
+      Wants=network-pre.target
 
-      DEFAULT_IF=$(ip ro sh default | awk '/default/ {print $5}')
-      iptables -t nat -A POSTROUTING -o "$DEFAULT_IF" -s "${local.subnet_cidr}" -j MASQUERADE
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/team-nat-firewall
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=multi-user.target
+      UNIT
+      systemctl daemon-reload
+      systemctl enable team-nat-firewall.service
+      systemctl restart team-nat-firewall.service
+
+      /usr/local/sbin/team-nat-firewall --enable-forwarding
+      sysctl --system
     EOT
   }
 
@@ -195,16 +222,57 @@ resource "google_compute_firewall" "allow_internal" {
 
   allow {
     protocol = "tcp"
+    ports    = ["22"]
   }
 
+  source_ranges = [var.instructor_cidr, local.subnet_cidr]
+  target_tags   = ["jumphost", "primary"]
+}
+
+# Workshop #50: support both subnet SNAT and preserved tailnet source addresses.
+# This rule prepares access only; creating primary remains a separate change.
+resource "google_compute_firewall" "allow_primary_services" {
+  name    = "team${var.team_id}-allow-primary-services"
+  network = data.google_compute_network.team_vpc.name
+
   allow {
-    protocol = "udp"
+    protocol = "tcp"
+    ports    = ["8000"]
   }
 
   allow {
     protocol = "icmp"
   }
 
-  source_ranges = [var.instructor_cidr, local.subnet_cidr]
-  target_tags   = ["jumphost", "primary"]
+  source_ranges = [local.subnet_cidr, local.tailnet_cidr]
+  target_tags   = ["primary"]
+}
+
+
+resource "google_compute_firewall" "allow_forwarded_nat" {
+  name    = "team${var.team_id}-allow-forwarded-nat"
+  network = data.google_compute_network.team_vpc.name
+
+  allow {
+    protocol = "tcp"
+
+    ports = local.nat_tcp_ports
+  }
+  # GCP also admits these ports to the host; TEAM-NAT-INPUT blocks that path.
+  source_ranges = [local.subnet_cidr]
+  target_tags   = ["jumphost"]
+}
+
+# Preserve the instructor proxy's Headscale access when the broad rule is removed (#48).
+resource "google_compute_firewall" "allow_headscale_proxy" {
+  name    = "team${var.team_id}-allow-headscale-proxy"
+  network = data.google_compute_network.team_vpc.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["8080"]
+  }
+
+  source_ranges = [var.headscale_proxy_cidr]
+  target_tags   = ["jumphost"]
 }
