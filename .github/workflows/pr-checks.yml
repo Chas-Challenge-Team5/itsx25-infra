@@ -57,8 +57,22 @@ jobs:
         run: terraform init -input=false -backend=false -lockfile=readonly
         working-directory: iap-access
 
+      - name: Check Secure Boot migration script syntax
+        run: bash -n scripts/prepare-secure-boot.sh
+
       - name: Terraform Validate and Test (iap-access, mocked)
         run: |
           terraform validate
           terraform test
         working-directory: iap-access
+
+      # Access IAM is managed separately and is verified before OS Login is enabled.
+      - name: Terraform Init (access, no backend)
+        run: terraform init -input=false -backend=false -lockfile=readonly
+        working-directory: access
+
+      - name: Terraform Validate and Test (access, mocked)
+        run: |
+          terraform validate
+          terraform test
+        working-directory: access

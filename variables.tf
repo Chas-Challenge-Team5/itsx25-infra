@@ -32,10 +32,8 @@ variable "instructor_cidr" {
   default     = "10.0.0.0/24"
 }
 
-variable "ssh_users" {
-  description = "List of SSH users and their public keys for instance access"
-  type = list(object({
-    username   = string
-    public_key = string
-  }))
+variable "enable_secure_boot" {
+  description = "Enable only after preparing and boot-testing a signed kernel. Changing this setting requires a VM stop/start; a fresh VM from the current lab image must be prepared first."
+  type        = bool
+  default     = false
 }

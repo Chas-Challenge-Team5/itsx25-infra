@@ -97,6 +97,13 @@ resource "google_compute_instance" "jumphost" {
 
   resource_policies = [google_compute_resource_policy.daily_schedule.id]
 
+  # Kontot har ingen roll i projektet, bara secretAccessor på instructor-demo-secret.
+  # Byte av konto eller scopes stoppar och startar VM:n.
+  service_account {
+    email  = "team${var.team_id}-jumphost@${var.project_id}.iam.gserviceaccount.com"
+    scopes = ["cloud-platform"]
+  }
+
   boot_disk {
     initialize_params {
       image = "${var.project_id}/debian"
@@ -113,7 +120,7 @@ resource "google_compute_instance" "jumphost" {
   }
 
   metadata = {
-    ssh-keys               = join("\n", [for user in var.ssh_users : "${user.username}:${user.public_key}"])
+    enable-oslogin         = "TRUE"
     block-project-ssh-keys = true
     startup-script         = <<-EOT
       #!/bin/bash
@@ -156,6 +163,12 @@ resource "google_compute_instance" "jumphost" {
       sysctl --system
     EOT
   }
+
+  shielded_instance_config {
+    enable_secure_boot          = var.enable_secure_boot
+    enable_vtpm                 = true
+    enable_integrity_monitoring = true
+  }
 }
 
 # resource "google_compute_instance" "primary" {
@@ -182,7 +195,7 @@ resource "google_compute_instance" "jumphost" {
 #   }
 
 #   metadata = {
-#     ssh-keys               = join("\n", [for user in var.ssh_users : "${user.username}:${user.public_key}"])
+#     enable-oslogin         = "TRUE"
 #     block-project-ssh-keys = true
 #     startup-script         = <<-EOT
 #       #!/bin/bash

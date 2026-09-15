@@ -36,9 +36,19 @@ Nätverkstesterna kräver Linux, root, Terraform, iproute2 och iptables. De rend
 
 Testerna körs också i PR-jobbet utan GCP-autentisering. Återskapande av regler efter förlorat körtillstånd testas, men ersätter inte en riktig VM-omstart eller kontroll av GCP:s effektiva brandvägg.
 
+## Funktionstest i GCP
+
+Den 15 september 2026 verifierades reglerna i en separat VPC med en testjumphost, en intern klient utan extern IP och en simulerad instruktörsproxy. Testet använde branchens brandväggsblock, startup-script och filtertemplate, med separata resursnamn och separat state.
+
+SSH/sudo via IAP och från instruktörsnätet fungerade. Klientens HTTP/HTTPS gick genom NAT med verifierad källadressöversättning och giltig TLS-kontroll. Anslutningar till jumphostens egna 80/443 samt otillåtna TCP/UDP-portar blockerades mot kända lyssnande tjänster. TCP 8080 fungerade från proxyadressen men blockerades från klienten. SOCKS över IAP fungerade också.
+
+Efter en riktig VM-omstart visade systemd-loggen att filtret laddades före nätverket. Samma trafiktester passerade igen, och inga dubbla kedjehopp eller NAT-regler tillkom. Detta verifierar brandväggslösningen i testmiljön; den verkliga Headscale-tjänsten och Spectres publika proxy behöver fortfarande verifieras vid deras införande.
+
+Återställning provades genom att först återställa GCP-reglerna och sedan ta bort bara värdfiltrets egna kedjor och hopp. Tidigare åtkomst kom tillbaka, medan NAT och SSH fortsatte fungera.
+
 ## Införande i befintlig miljö
 
-**Merga inte #31 före #64.** Synka därefter med nya main och granska en färsk plan. OS Login ska behållas, Secure Boot ska inte aktiveras och ingen VM ska ersättas. En gammal plan får inte återanvändas efter en annan merge eller ändring i miljön.
+Synka med aktuell main och granska en färsk plan. OS Login från #64 ska behållas, Secure Boot ska inte aktiveras och ingen VM ska ersättas. En gammal plan får inte återanvändas efter en annan merge eller ändring i miljön. Andra ändringar som kan medföra stopp/start ska samordnas separat innan apply godkänns.
 
 Metadataändringen kör inte automatiskt startup-scriptet på en redan startad VM. Terraform kan också skapa NAT-regeln innan värdfiltret är aktivt. En vanlig fullständig apply är därför inte ett tillräckligt införandeförfarande; `depends_on` bevisar inte att gästsystemets filter är laddat.
 
