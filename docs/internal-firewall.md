@@ -4,22 +4,26 @@
 
 | Trafik | Källa | Tillåtelse |
 |---|---|---|
-| SSH till jumphosten | Teamets subnät och instruktörsnätet | TCP 22 |
+| SSH till jumphost och primary | Teamets subnät och instruktörsnätet | TCP 22 |
+| Testtjänst och ping till primary | Teamets subnät samt `100.64.0.0/10` | TCP 8000 och ICMP |
 | SSH via IAP | `35.235.240.0/20` | TCP 22, befintlig separat regel |
 | Spectres proxy till Headscale | `headscale_proxy_cidr`, normalt `10.0.0.2/32` | TCP 8080 |
 | Trafik genom NAT | Teamets subnät | TCP 80/443 |
+| Vidarebefordran via `tailscale0` | Tailscale-gränssnittet, in eller ut | Lämnas vidare till Tailscales egna regler och åtkomstpolicy |
 
-Alla regler riktas enbart mot taggen `jumphost`. Den breda UDP- och ICMP-öppningen samt måltaggen `primary` tas bort från internregeln. Direkt SSH från internet återinförs inte; IAP och instruktörens separata SSH-regler behålls. OS Login och IAM ändras inte av #31.
+Internregeln behåller SSH till både `jumphost` och `primary`. En separat regel tillåter TCP 8000 och ICMP enbart till `primary`, för #50. Källorna täcker både Tailscales standard-SNAT (jumphostens interna IP) och `--snat-subnet-routes=false` (klientens Tailscale-IP). Den befintliga returvägen `tailnet_via_jumphost` behålls. Regeln startar ingen primary-maskin; det görs i #50. Den breda UDP-öppningen tas bort, och andra portar tillåts inte generellt. Direkt SSH från internet återinförs inte; IAP och instruktörens separata SSH-regler behålls. OS Login och IAM ändras inte av #31.
 
 GCP:s NAT-ingressregel kan även släppa fram trafik till jumphostens egna 80/443. Därför krävs värdfiltret i `templates/team-nat-firewall.sh.tftpl` innan de nya GCP-reglerna införs:
 
 - `TEAM-NAT-INPUT` blockerar nya anslutningar från teamets subnät till jumphostens egna 80/443. Etablerad svarstrafik behålls. Övrig lokal trafik avgörs av GCP och befintliga värdregler; detta är ingen fristående fullständig INPUT-policy.
-- `TEAM-NAT-FORWARD` tillåter svarstrafik samt nya HTTP/HTTPS-anslutningar från teamets subnät. Annan vidarebefordrad trafik blockeras.
+- `TEAM-NAT-FORWARD` lämnar trafik in eller ut via `tailscale0` vidare med `RETURN`, före vanliga regler för svarstrafik och NAT. För övrig trafik tillåts svarstrafik samt nya HTTP/HTTPS-anslutningar från teamets subnät; annan vidarebefordran blockeras.
 - NAT-portarna definieras gemensamt i `local.nat_tcp_ports` för GCP-regeln och värdfiltret.
 
 `team-nat-firewall.service` laddar filtret före `network-pre.target`. Startup-scriptet installerar hjälpscriptet och tjänsten, startar filtret och förbereder sedan MASQUERADE och IP-forwarding. Hjälpscriptet väntar på iptables-låset och tömmer bara sina egna kedjor. Upprepad körning lägger inte till fler identiska hopp eller NAT-regler. Äldre dubbletter från tidigare konfiguration rensas inte automatiskt.
 
-TCP 80/443 är den NAT-funktion som denna lösning stödjer. Det är ingen garanti för alla framtida klientbehov. Extern DNS, QUIC/UDP, ping och Tailnet-tjänster på andra portar behöver separata beslut och tester. GCP:s metadata-DNS kräver ingen generell intern UDP-öppning. Samordna med #47–49; tillåten TCP 8080 bevisar inte att Headscale eller den publika proxyn fungerar.
+Undantaget för `tailscale0` är avsiktligt ett `RETURN`, inte ett slutligt `ACCEPT`: Tailscales kedja måste fortfarande kunna märka paketen för subnet-SNAT och tillämpa sina regler. Det gäller även etablerade paket. Lösningen förutsätter normal Tailscale-hantering av brandväggen (`--netfilter-mode=on`); `off` eller `nodivert` kräver en separat granskad integration. Undantaget bygger på gränssnittet, inte enbart på en källadress i `100.64.0.0/10`. Det öppnar alltså inte vanlig LAN-trafik med en sådan källadress. Tailnet-åtkomstpolicyn förvaltas i #52. Se [Tailscales netfilter-lägen](https://tailscale.com/docs/reference/netfilter-modes) och [implementationen av märkning och SNAT](https://github.com/tailscale/tailscale/blob/main/util/linuxfw/iptables_runner.go).
+
+TCP 80/443 är den vanliga internet-NAT som denna lösning stödjer. Extern DNS och QUIC/UDP för sådana klienter behöver separata beslut. GCP:s metadata-DNS kräver ingen generell intern UDP-öppning. Samordna med #49–51: annonserade rutter, godkännanden, Spectres destinationsbundna masquerade och Split DNS införs där. Den här ändringen installerar inte Tailscale, annonserar inga rutter och lägger inte till Spectres masquerade. Tillåten TCP 8080 bevisar inte att Headscale eller den publika proxyn fungerar.
 
 ## Kontroller utan GCP
 
@@ -32,13 +36,15 @@ sudo env "PATH=$PATH" python3 tests/network_firewall.py
 
 Terraform-testerna använder mockad provider och kontrollerar tjänsteportar, källnät, måltaggar, IAP/instruktörsregler och avvisning av en bred eller ogiltig proxykälla.
 
-Nätverkstesterna kräver Linux, root, Terraform, iproute2 och iptables. De renderar det riktiga hjälpscriptet med Terraform och skapar tre isolerade nätverksnamnrymder för klient, router och destination. De verifierar NAT-adressen och svarstrafik, blockerade portar mot kända lyssnare, otillåtet källnät, omladdning med kvarvarande anslutning, frånvaro av nya dubbletter samt selektiv återställning. Namnrymder och testprocesser städas bort. Värdens vanliga nätverksnamnrymd får inga brandväggs- eller routingändringar.
+Nätverkstesterna kräver Linux, root, Terraform, iproute2, iptables och ping. De renderar det riktiga hjälpscriptet med Terraform och skapar fyra isolerade nätverksnamnrymder för klient/primary, router, destination/Spectre och en simulerad tailnet-klient. De verifierar NAT-adressen och svarstrafik, blockerade portar mot kända lyssnare, otillåtet källnät, omladdning med kvarvarande anslutning, frånvaro av nya dubbletter samt selektiv återställning. Namnrymder och testprocesser städas bort. Värdens vanliga nätverksnamnrymd får inga brandväggs- eller routingändringar.
+
+Tailscale-proven modellerar gränssnittet `tailscale0` och iptables-kedjorna för märkning, SNAT och stateful filtering. Ping och TCP 8000 till primary samt ping och HTTPS till Spectre provas med Tailscales kedja både före och efter vårt filter, med och utan subnet-SNAT samt efter omladdning. Ett separat prov modellerar Spectres destinationsbundna masquerade samtidigt som primary behåller klientens ursprungliga adress. Testerna kontrollerar även att efterföljande nekande regler får verkan och att en CGNAT-källadress på ett vanligt LAN-gränssnitt inte kringgår filtret. Detta är trafiktester av filterintegrationen, inte ett verkligt Headscale/Tailscale-test av registrering, ACL eller routedistribution. Tailscales fristående nftables-backend ingår inte i dessa prov; verifiera vald backend och FORWARD-policy vid införandet. GCP-reglerna kontrolleras med mockade Terraform-tester.
 
 Testerna körs också i PR-jobbet utan GCP-autentisering. Återskapande av regler efter förlorat körtillstånd testas, men ersätter inte en riktig VM-omstart eller kontroll av GCP:s effektiva brandvägg.
 
 ## Funktionstest i GCP
 
-Den 15 september 2026 verifierades reglerna i en separat VPC med en testjumphost, en intern klient utan extern IP och en simulerad instruktörsproxy. Testet använde branchens brandväggsblock, startup-script och filtertemplate, med separata resursnamn och separat state.
+Den 15 september 2026 verifierades den tidigare versionen före PR-granskningens komplettering för primary/Tailscale i en separat VPC med en testjumphost, en intern klient utan extern IP och en simulerad instruktörsproxy. Testet använde dåvarande branchens brandväggsblock, startup-script och filtertemplate, med separata resursnamn och separat state. De nya primary-reglerna och samspelet med verklig tailscaled har ännu inte testats i GCP.
 
 SSH/sudo via IAP och från instruktörsnätet fungerade. Klientens HTTP/HTTPS gick genom NAT med verifierad källadressöversättning och giltig TLS-kontroll. Anslutningar till jumphostens egna 80/443 samt otillåtna TCP/UDP-portar blockerades mot kända lyssnande tjänster. TCP 8080 fungerade från proxyadressen men blockerades från klienten. SOCKS över IAP fungerade också.
 
@@ -55,9 +61,11 @@ Metadataändringen kör inte automatiskt startup-scriptet på en redan startad V
 1. Samordna testfönster och deployer. Spara aktuell metadata, filter/NAT-regler och eventuella befintliga hjälpscript och systemd-enheter. Verifiera ny OS Login-SSH via IAP, sudo och proxy samt fungerande återställningsåtkomst.
 2. Förbered värdfiltret separat efter godkännande. Installera exakt det Terraform-renderade hjälpscriptet och systemd-enheten från den granskade konfigurationen, medan den breda GCP-regeln finns kvar. Starta tjänsten. Undvik att köra en gammal rotplan som återställer SSH-nyckelmetadata.
 3. Kontrollera aktiv/enabled `team-nat-firewall.service`, kedjehopp, INPUT/FORWARD-regler, MASQUERADE och IP-forwarding. Verifiera ny SSH-anslutning och SOCKS-proxy. Avbryt vid servicefel; godkänn inte NAT-ingressregeln om filtret inte fungerar.
-4. Granska och applicera sedan en ny fullständig plan via det skyddade deployflödet. Den ska lägga till avgränsad NAT-ingress och Headscale-ingress, begränsa internregeln och uppdatera startup-metadata.
+4. Granska och applicera sedan en ny fullständig plan via det skyddade deployflödet. Den ska lägga till avgränsad NAT-ingress, Headscale-ingress och primary-regeln, begränsa internregeln och uppdatera startup-metadata.
 5. Testa GCP:s effektiva regler från en intern klient utan extern IP: HTTP/HTTPS genom NAT ska fungera och nya anslutningar till jumphostens egna 80/443 ska blockeras. Använd kända lyssnare även vid negativa tester. Kontrollera otillåtna TCP/UDP-portar, instruktörens SSH och Headscale från Spectre. Headscale ska inte kunna nås från andra källor genom de nya reglerna.
 6. I ett godkänt underhållsfönster: verifiera ny inloggning, filter, NAT och proxy efter omstart. Kontrollera därefter att en ny Terraform-plan inte återinför den breda regeln.
+
+Samordna reglerna med den som genomför #49–51 före merge. När primary och Tailscale införs: verifiera ping och TCP 8000 från en riktig tailnet-klient med både standard-SNAT och bevarad klientadress. Verifiera Spectres ping/HTTPS och Split DNS med dess avsedda masquerade. Starta om/ladda om både vårt filter och tailscaled i båda ordningarna och kontrollera tillåten samt nekad trafik. Registrering, rutter och ACL måste fungera för att hela kedjan ska vara verifierad.
 
 En omstart av den ordinarie jumphosten påverkar SSH, proxy och NAT. Prova helst hela införandet inklusive omstart på isolerade testresurser först. Lägg inte till taggen `jumphost` på en test-VM utan att granska vilka andra regler som då blir tillämpliga.
 

@@ -18,6 +18,7 @@ locals {
   jumphost_zone            = coalesce(var.jumphost_zone, data.google_compute_zones.available.names[local.team_zone])
   primary_zone             = coalesce(var.primary_zone, data.google_compute_zones.available.names[local.team_zone])
   subnet_cidr              = "10.0.${var.team_id}.0/24"
+  tailnet_cidr             = "100.64.0.0/10"
   nat_tcp_ports            = ["80", "443"]
   nat_firewall_script = templatefile("${path.module}/templates/team-nat-firewall.sh.tftpl", {
     subnet_cidr   = local.subnet_cidr
@@ -64,7 +65,7 @@ resource "google_compute_route" "internet_via_jumphost" {
 resource "google_compute_route" "tailnet_via_jumphost" {
   name              = "team${var.team_id}-tailnet-via-jumphost"
   network           = data.google_compute_network.team_vpc.id
-  dest_range        = "100.64.0.0/10"
+  dest_range        = local.tailnet_cidr
   priority          = 800
   next_hop_instance = google_compute_instance.jumphost.self_link
   tags              = ["no-external-ip"]
@@ -225,7 +226,26 @@ resource "google_compute_firewall" "allow_internal" {
   }
 
   source_ranges = [var.instructor_cidr, local.subnet_cidr]
-  target_tags   = ["jumphost"]
+  target_tags   = ["jumphost", "primary"]
+}
+
+# Workshop #50: support both subnet SNAT and preserved tailnet source addresses.
+# This rule prepares access only; creating primary remains a separate change.
+resource "google_compute_firewall" "allow_primary_services" {
+  name    = "team${var.team_id}-allow-primary-services"
+  network = data.google_compute_network.team_vpc.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["8000"]
+  }
+
+  allow {
+    protocol = "icmp"
+  }
+
+  source_ranges = [local.subnet_cidr, local.tailnet_cidr]
+  target_tags   = ["primary"]
 }
 
 

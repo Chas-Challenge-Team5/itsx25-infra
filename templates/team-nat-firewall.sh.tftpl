@@ -12,6 +12,11 @@ iptables-restore --wait 10 --noflush <<'RULES'
 -A TEAM-NAT-INPUT -s ${subnet_cidr} -p tcp -m multiport --dports ${nat_tcp_ports} -j DROP
 -A TEAM-NAT-INPUT -j RETURN
 -A TEAM-NAT-FORWARD -m conntrack --ctstate INVALID -j DROP
+# Delegate overlay traffic before ACCEPT/DROP, including established packets.
+# RETURN preserves tailscaled's marking, subnet SNAT and stateful filtering.
+# Match the interface, not just a source address from the shared CGNAT range.
+-A TEAM-NAT-FORWARD -i tailscale0 -j RETURN
+-A TEAM-NAT-FORWARD -o tailscale0 -j RETURN
 -A TEAM-NAT-FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 -A TEAM-NAT-FORWARD -s ${subnet_cidr} -p tcp -m multiport --dports ${nat_tcp_ports} -m conntrack --ctstate NEW -j ACCEPT
 -A TEAM-NAT-FORWARD -j DROP
