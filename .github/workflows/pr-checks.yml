@@ -50,6 +50,9 @@ jobs:
         run: terraform init -input=false -backend=false -lockfile=readonly
         working-directory: iap-access
 
+      - name: Check Secure Boot migration script syntax
+        run: bash -n scripts/prepare-secure-boot.sh
+
       - name: Terraform Validate and Test (iap-access, mocked)
         run: |
           terraform validate
