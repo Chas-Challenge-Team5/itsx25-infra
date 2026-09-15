@@ -96,7 +96,7 @@ Bootstrap, OS Login-åtkomst och IAP-åtkomst förvaltas separat. Deploy-workflo
 
 Backend-konfigurationen förutsätter att state-bucketen redan finns. En helt ny miljö kräver därför separat etablering av backend.
 
-IAP-tilldelningarna gäller jumphostens privata IP och TCP/22. De ger tunnelåtkomst. OS Login hanterar SSH-inloggningen genom användarens Google-konto och publika SSH-nyckel i OS Login-profilen. `access/` tilldelar de fem användarna OS Admin Login på jumphosten, vilket ger sudo där.
+IAP-tilldelningarna gäller jumphostens privata IP och TCP/22. De ger tunnelåtkomst. OS Login hanterar SSH-inloggningen genom användarens Google-konto och publika SSH-nyckel i OS Login-profilen. `access/` tilldelar de fem användarna OS Admin Login på jumphosten, vilket ger sudo där. Modulen tilldelar även Service Account User på jumphostens särskilda tjänstekonto, som krävs för OS Login när det kontot är kopplat till VM:n.
 
 Verifiera IAM-tilldelningarna och användarnas OS Login-profiler innan OS Login aktiveras. Kontrollera instansens IAM vid VM-ersättning och IAP-tilldelningarna vid byte eller återanvändning av IP-adress. Införande och återställning beskrivs i [OS Login-underlaget](docs/os-login.md).
 
