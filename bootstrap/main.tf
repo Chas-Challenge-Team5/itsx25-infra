@@ -111,6 +111,22 @@ data "google_iam_policy" "terraform_state" {
     members = [
       "serviceAccount:${google_service_account.cicd.email}"
     ]
+
+    condition {
+      title       = "cicd_root_state_and_deploy_plans"
+      description = "Allow CI/CD to manage root Terraform state and saved deploy plans"
+      expression = trimspace(templatefile("${path.module}/cicd-storage-condition.cel.tftpl", {
+        root_state_prefix   = jsonencode("projects/_/buckets/${google_storage_bucket.terraform_state.name}/objects/terraform/state/")
+        deploy_plans_prefix = jsonencode("projects/_/buckets/${google_storage_bucket.terraform_state.name}/objects/terraform/deploy-plans/")
+      }))
+    }
+  }
+
+  # GCS evaluates object listing against the bucket, not individual object names.
+  # This permits listing all names, but does not grant access to object contents.
+  binding {
+    role    = "roles/storage.legacyBucketReader"
+    members = ["serviceAccount:${google_service_account.cicd.email}"]
   }
 
   binding {
