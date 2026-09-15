@@ -33,7 +33,7 @@ resource "google_storage_bucket" "terraform_state" {
 
   lifecycle_rule {
     condition {
-      num_newer_versions = 10
+      days_since_noncurrent_time = 7
     }
     action {
       type = "Delete"
