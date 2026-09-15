@@ -33,7 +33,7 @@ variable "instructor_cidr" {
 }
 
 variable "enable_secure_boot" {
-  description = "Keep Secure Boot disabled until the boot failure tracked in issue #63 is resolved; changing this requires a VM stop/start."
+  description = "Enable only after preparing and boot-testing a signed kernel. Changing this setting requires a VM stop/start; a fresh VM from the current lab image must be prepared first."
   type        = bool
   default     = false
 }

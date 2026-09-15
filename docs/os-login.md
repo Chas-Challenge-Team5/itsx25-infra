@@ -6,10 +6,13 @@ OS Login har testats på jumphosten: ny SSH-inloggning via IAP, sudo till root
 och Spectre via SOCKS-proxy fungerade med det aktiva teamkontot. De fem
 instansspecifika IAM-tilldelningarna har applicerats i `access/`.
 
-Secure Boot-testet misslyckades med nuvarande bootdisk: seriell konsol visade
-`error: prohibited by secure boot policy` och `Failed to boot both default and
-fallback entries`. Aktivera inte Secure Boot igen innan bootkedjan har utretts
-och korrigerats i [issue #63](https://github.com/Chas-Challenge-Team5/itsx25-infra/issues/63).
+Secure Boot-testet misslyckades med den osignerade kärnan på jumphostens bootdisk.
+Samma seriella logg innehöll både `prohibited by secure boot policy` och
+`bad shim signature`, följt av `Failed to boot both default and fallback entries`.
+Felsökningen identifierade en osignerad, låst kärna. En signerad ersättningskärna
+testades senare samma dag med Secure Boot på en separat VM, men den ordinarie
+jumphosten och grundimagen har ännu inte fått kärnbytet.
+Införandet hanteras i [issue #63](https://github.com/Chas-Challenge-Team5/itsx25-infra/issues/63).
 `enable_secure_boot` är därför som standard `false` så att
 OS Login kan införas separat. vTPM och integrity monitoring behålls aktiverade.
 Att GCP visar VM:n som RUNNING bevisar inte att operativsystemet har startat.
@@ -30,8 +33,9 @@ andra användares befintliga tilldelningar. Projektets IAM ändras inte.
 1. En behörig användare granskar en färsk plan för `access/` **före merge**.
    Tilldelningarna applicerades vid tidigare test; om planen saknar ändringar
    behövs ingen ny apply. Vid avvikelser krävs separat granskning och godkänt införande.
-   Rotmodulen aktiverar OS Login automatiskt vid deploy efter merge. Kör inte
-   rotmodulens apply innan tilldelningen är verifierad.
+   Inför deployflödet i PR #62 före denna ändring. Rotmodulen aktiverar då
+   OS Login när den sparade planen har granskats och godkänts i `terraform-apply`.
+   Godkänn inte apply innan tilldelningen och användarnas OS Login-profiler är verifierade.
 2. Administratören behöver `compute.instances.getIamPolicy` och
    `compute.instances.setIamPolicy` på jumphosten samt åtkomst till state-backenden.
    Editor innehåller inte `compute.instances.setIamPolicy`, men kontrollen den
@@ -56,13 +60,13 @@ andra användares befintliga tilldelningar. Projektets IAM ändras inte.
    Om VM:n har ett servicekonto krävs också Service Account User på det kontot;
    användare från en annan organisation kan behöva OS Login External User.
    Dessa extra behörigheter delas inte ut av modulen.
-4. Kontrollera att den anpassade Debian-imagen stöder OS Login. Secure Boot är
-   blockerat av uppstartsfelet ovan och ska lämnas avstängt tills det är löst.
+4. Kontrollera att den anpassade Debian-imagen stöder OS Login. Lämna Secure Boot
+   avstängt tills den signerade kärnan har införts och testats på den aktuella VM:n.
    Granska rotmodulens plan före merge: OS Login aktiveras och metadata-nycklarna
    tas bort. vTPM/integrity monitoring ska behållas och Secure Boot ska vara av.
    Utred all oväntad VM-ersättning eller stopp/start innan införandet.
-5. Samordna införandet med #28/PR #62: om det nya deployflödet har mergats
-   krävs granskning av den privata planen och environment-godkännande före apply.
+5. Samordna införandet med #28/PR #62: det nya deployflödet ska finnas på main
+   och kräver granskning av den privata planen och environment-godkännande före apply.
    Behåll access- och IAP-tester när PR-workflowen sammanfogas; återinför inte
    GCP-autentisering i PR-jobbet efter #62. Inför sedan OS Login, med
    `enable_secure_boot = false`. Secure Boot kräver ett separat verifierat införande.
