@@ -12,6 +12,12 @@ jobs:
   terraform-checks:
     name: Format & Validate
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        working-directory: [".", "./bootstrap"]
+    defaults:
+      run:
+        working-directory: ${{ matrix.working-directory }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,6 +41,28 @@ jobs:
 
       - name: Terraform Validate
         run: terraform validate
+
+      - name: Install TFLint
+        env:
+          TFLINT_VERSION: "0.55.1"
+        run: |
+          curl -sSLO "https://github.com/terraform-linters/tflint/releases/download/v${TFLINT_VERSION}/tflint_linux_amd64.zip"
+          curl -sSLO "https://github.com/terraform-linters/tflint/releases/download/v${TFLINT_VERSION}/checksums.txt"
+          sha256sum --ignore-missing -c checksums.txt
+          unzip tflint_linux_amd64.zip
+          sudo install -c -v tflint /usr/local/bin/
+
+      - name: TFLint Init
+        run: tflint --init
+
+      - name: Run TFLint
+        run: tflint --recursive
+
+      - name: Install Checkov
+        run: pip install checkov==3.2.334
+
+      - name: Run Checkov
+        run: checkov -d . --framework terraform --compact
 
       - name: Terraform Plan
         run: terraform plan -input=false -no-color
