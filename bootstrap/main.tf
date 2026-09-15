@@ -98,10 +98,30 @@ resource "google_project_iam_member" "cicd_network_admin" {
   member  = "serviceAccount:${google_service_account.cicd.email}"
 }
 
-resource "google_project_iam_member" "cicd_editor" {
+# Ersätter roles/editor (#10). Anpassade roller går inte att skapa i projektet
+# (vi saknar iam.roles.create), så det här är de minsta färdiga rollerna som
+# täcker rotmodulen: instanser, disk och resource policy (instanceAdmin.v1)
+# och brandväggarnas skrivrätt, som networkAdmin inte har (securityAdmin).
+# Båda har setIamPolicy på Compute-resurser i hela det delade projektet,
+# vilket editor inte har. Avvägningen står i #10.
+resource "google_project_iam_member" "cicd_instance_admin" {
   project = var.project_id
-  role    = "roles/editor"
+  role    = "roles/compute.instanceAdmin.v1"
   member  = "serviceAccount:${google_service_account.cicd.email}"
+}
+
+resource "google_project_iam_member" "cicd_security_admin" {
+  project = var.project_id
+  role    = "roles/compute.securityAdmin"
+  member  = "serviceAccount:${google_service_account.cicd.email}"
+}
+
+# Jumphosten kör som team5-jumphost (#46), så CI behöver actAs på just det
+# kontot för att kunna skapa om eller ändra instansen.
+resource "google_service_account_iam_member" "cicd_jumphost_user" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/team${var.team_id}-jumphost@${var.project_id}.iam.gserviceaccount.com"
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.cicd.email}"
 }
 
 data "google_iam_policy" "terraform_state" {

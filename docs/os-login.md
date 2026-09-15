@@ -61,12 +61,11 @@ och anslutet tjänstekonto behöver verifieras efter införandet.
    `compute.instances.setIamPolicy` på jumphosten samt åtkomst till state-backenden.
    För tjänstekontot krävs dessutom `iam.serviceAccounts.getIamPolicy` och
    `iam.serviceAccounts.setIamPolicy`. Kontrollera behörigheterna på det aktuella kontot.
-   Editor innehåller inte `compute.instances.setIamPolicy`, men kontrollen den
-   14 september visar en separat tilldelning av `InstanceIAMManager` till CI-kontot,
-   med denna behörighet och villkor för instansnamn som börjar med `team`.
+   CI-kontot har `compute.instances.setIamPolicy` genom `roles/compute.instanceAdmin.v1`
+   (#10) och genom `InstanceIAMManager`, som gäller instanser vars namn börjar med `team`.
    Den effektiva behörigheten har inte funktionstestats som CI-kontot.
    Åtkomstmodulen behåller separat state och appliceras inte av CI. Rotmodulens
-   OS Login-ändring använder metadataåtkomst, som CI-kontot har via Editor.
+   OS Login-ändring använder metadataåtkomst, som CI-kontot har via `roles/compute.instanceAdmin.v1`.
 3. Från repots rot, med administratörens egna inloggningsuppgifter:
 
    ```powershell
