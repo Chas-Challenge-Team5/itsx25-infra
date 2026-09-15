@@ -7,3 +7,5 @@
 
 # Sparade planer kan innehålla känsliga värden.
 *.tfplan
+
+__pycache__/

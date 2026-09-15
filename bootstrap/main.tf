@@ -78,7 +78,13 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     issuer_uri = "https://token.actions.githubusercontent.com"
   }
 
-  attribute_condition = "assertion.repository == '${var.github_repo}'"
+  # En PR kan ändra sin workflow. Säkerhetsgränsen måste därför ligga i GCP.
+  attribute_condition = trimspace(templatefile("${path.module}/github-wif-condition.cel.tftpl", {
+    repository    = jsonencode(var.github_repo)
+    repository_id = jsonencode(var.github_repository_id)
+    owner_id      = jsonencode(var.github_repository_owner_id)
+    workflow_ref  = jsonencode("${var.github_repo}/.github/workflows/deploy.yml@refs/heads/main")
+  }))
 }
 
 resource "google_service_account" "cicd" {
@@ -107,10 +113,20 @@ data "google_iam_policy" "terraform_state" {
     ]
 
     condition {
-      title       = "cicd_root_state_only"
-      description = "Allow CI/CD to manage only the root Terraform state"
-      expression  = "resource.name.startsWith('projects/_/buckets/${google_storage_bucket.terraform_state.name}/objects/terraform/state/')"
+      title       = "cicd_root_state_and_deploy_plans"
+      description = "Allow CI/CD to manage root Terraform state and saved deploy plans"
+      expression = trimspace(templatefile("${path.module}/cicd-storage-condition.cel.tftpl", {
+        root_state_prefix   = jsonencode("projects/_/buckets/${google_storage_bucket.terraform_state.name}/objects/terraform/state/")
+        deploy_plans_prefix = jsonencode("projects/_/buckets/${google_storage_bucket.terraform_state.name}/objects/terraform/deploy-plans/")
+      }))
     }
+  }
+
+  # GCS evaluates object listing against the bucket, not individual object names.
+  # This permits listing all names, but does not grant access to object contents.
+  binding {
+    role    = "roles/storage.legacyBucketReader"
+    members = ["serviceAccount:${google_service_account.cicd.email}"]
   }
 
   binding {
