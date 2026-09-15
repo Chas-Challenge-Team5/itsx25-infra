@@ -1,0 +1,6 @@
+assertion.repository == ${repository} &&
+assertion.repository_id == ${repository_id} &&
+assertion.repository_owner_id == ${owner_id} &&
+assertion.ref == 'refs/heads/main' &&
+assertion.workflow_ref == ${workflow_ref} &&
+assertion.event_name in ['push', 'workflow_dispatch']

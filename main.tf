@@ -2,7 +2,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 7.0"
+      version = "~> 8.2"
     }
   }
 }
@@ -18,6 +18,11 @@ locals {
   jumphost_zone            = coalesce(var.jumphost_zone, data.google_compute_zones.available.names[local.team_zone])
   primary_zone             = coalesce(var.primary_zone, data.google_compute_zones.available.names[local.team_zone])
   subnet_cidr              = "10.0.${var.team_id}.0/24"
+  nat_tcp_ports            = ["80", "443"]
+  nat_firewall_script = templatefile("${path.module}/templates/team-nat-firewall.sh.tftpl", {
+    subnet_cidr   = local.subnet_cidr
+    nat_tcp_ports = join(",", local.nat_tcp_ports)
+  })
 }
 
 data "google_compute_zones" "available" {
@@ -124,30 +129,8 @@ resource "google_compute_instance" "jumphost" {
 
       echo 'vm.swappiness=20' > /etc/sysctl.d/01-swappiness.conf
       echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/99-ip-forward.conf
-      DEFAULT_IF=$(ip ro sh default | awk '/default/ {print $5}')
-      # Own chains separate local services from forwarded client traffic.
-      # Restore only these chains; leave other host firewall rules intact.
-      cat > /usr/local/sbin/team-nat-firewall <<'SCRIPT'
-      #!/bin/bash
-      set -e
-      iptables-restore --noflush <<'RULES'
-      *filter
-      :TEAM-NAT-INPUT - [0:0]
-      :TEAM-NAT-FORWARD - [0:0]
-      -F TEAM-NAT-INPUT
-      -F TEAM-NAT-FORWARD
-      -A TEAM-NAT-INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
-      -A TEAM-NAT-INPUT -s ${local.subnet_cidr} -p tcp -m multiport --dports 80,443 -j DROP
-      -A TEAM-NAT-INPUT -j RETURN
-      -A TEAM-NAT-FORWARD -m conntrack --ctstate INVALID -j DROP
-      -A TEAM-NAT-FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-      -A TEAM-NAT-FORWARD -s ${local.subnet_cidr} -p tcp -m multiport --dports 80,443 -m conntrack --ctstate NEW -j ACCEPT
-      -A TEAM-NAT-FORWARD -j DROP
-      COMMIT
-      RULES
-      iptables -C INPUT -j TEAM-NAT-INPUT 2>/dev/null || iptables -I INPUT 1 -j TEAM-NAT-INPUT
-      iptables -C FORWARD -j TEAM-NAT-FORWARD 2>/dev/null || iptables -I FORWARD 1 -j TEAM-NAT-FORWARD
-      SCRIPT
+      # Encode the exact tested helper so nested heredoc indentation cannot corrupt it.
+      echo '${base64encode(local.nat_firewall_script)}' | base64 --decode > /usr/local/sbin/team-nat-firewall
       chmod 750 /usr/local/sbin/team-nat-firewall
       cat > /etc/systemd/system/team-nat-firewall.service <<'UNIT'
       [Unit]
@@ -169,9 +152,7 @@ resource "google_compute_instance" "jumphost" {
       systemctl enable team-nat-firewall.service
       systemctl restart team-nat-firewall.service
 
-      # Install filtering before enabling forwarding. Avoid duplicate NAT rules.
-      iptables -t nat -C POSTROUTING -o "$DEFAULT_IF" -s "${local.subnet_cidr}" -j MASQUERADE 2>/dev/null || \
-        iptables -t nat -A POSTROUTING -o "$DEFAULT_IF" -s "${local.subnet_cidr}" -j MASQUERADE
+      /usr/local/sbin/team-nat-firewall --enable-forwarding
       sysctl --system
     EOT
   }
@@ -221,19 +202,6 @@ resource "google_compute_instance" "jumphost" {
 #   }
 # }
 
-resource "google_compute_firewall" "allow_ssh" {
-  name    = "team${var.team_id}-allow-ssh"
-  network = data.google_compute_network.team_vpc.name
-
-  allow {
-    protocol = "tcp"
-    ports    = ["22"]
-  }
-
-  source_ranges = var.ssh_source_ranges
-  target_tags   = ["jumphost"]
-}
-
 resource "google_compute_firewall" "allow_internal" {
   name    = "team${var.team_id}-allow-internal"
   network = data.google_compute_network.team_vpc.name
@@ -255,9 +223,23 @@ resource "google_compute_firewall" "allow_forwarded_nat" {
   allow {
     protocol = "tcp"
 
-    ports = ["80", "443"]
+    ports = local.nat_tcp_ports
   }
   # GCP also admits these ports to the host; TEAM-NAT-INPUT blocks that path.
   source_ranges = [local.subnet_cidr]
+  target_tags   = ["jumphost"]
+}
+
+# Preserve the instructor proxy's Headscale access when the broad rule is removed (#48).
+resource "google_compute_firewall" "allow_headscale_proxy" {
+  name    = "team${var.team_id}-allow-headscale-proxy"
+  network = data.google_compute_network.team_vpc.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["8080"]
+  }
+
+  source_ranges = [var.headscale_proxy_cidr]
   target_tags   = ["jumphost"]
 }

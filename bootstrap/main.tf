@@ -2,7 +2,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 7.0"
+      version = "~> 8.2"
     }
     random = {
       source  = "hashicorp/random"
@@ -49,6 +49,16 @@ resource "google_storage_bucket" "terraform_state" {
   }
 }
 
+
+resource "google_project_iam_audit_config" "storage_data_read" {
+  project = var.project_id
+  service = "storage.googleapis.com"
+
+  audit_log_config {
+    log_type = "DATA_READ"
+  }
+}
+
 resource "google_iam_workload_identity_pool" "github" {
   workload_identity_pool_id = "team${var.team_id}-github-pool"
   display_name              = "GitHub Actions Pool"
@@ -68,12 +78,24 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     issuer_uri = "https://token.actions.githubusercontent.com"
   }
 
-  attribute_condition = "assertion.repository == '${var.github_repo}'"
+  # En PR kan ändra sin workflow. Säkerhetsgränsen måste därför ligga i GCP.
+  attribute_condition = trimspace(templatefile("${path.module}/github-wif-condition.cel.tftpl", {
+    repository    = jsonencode(var.github_repo)
+    repository_id = jsonencode(var.github_repository_id)
+    owner_id      = jsonencode(var.github_repository_owner_id)
+    workflow_ref  = jsonencode("${var.github_repo}/.github/workflows/deploy.yml@refs/heads/main")
+  }))
 }
 
 resource "google_service_account" "cicd" {
   account_id   = "team${var.team_id}-cicd"
   display_name = "CI/CD Pipeline Service Account"
+}
+
+resource "google_project_iam_member" "cicd_network_admin" {
+  project = var.project_id
+  role    = "roles/compute.networkAdmin"
+  member  = "serviceAccount:${google_service_account.cicd.email}"
 }
 
 resource "google_project_iam_member" "cicd_editor" {
@@ -82,9 +104,59 @@ resource "google_project_iam_member" "cicd_editor" {
   member  = "serviceAccount:${google_service_account.cicd.email}"
 }
 
+data "google_iam_policy" "terraform_state" {
+  binding {
+    role = "roles/storage.objectAdmin"
+
+    members = [
+      "serviceAccount:${google_service_account.cicd.email}"
+    ]
+  }
+
+  binding {
+    role = "roles/storage.legacyBucketOwner"
+
+    members = [
+      "projectOwner:${var.project_id}"
+    ]
+  }
+
+  binding {
+    role = "roles/storage.legacyObjectOwner"
+
+    members = [
+      "projectOwner:${var.project_id}"
+    ]
+  }
+
+  binding {
+    role = "roles/storage.objectAdmin"
+
+    members = [
+      for member in var.team_members : "user:${member}"
+    ]
+  }
+
+  # objectAdmin räcker bara till objekten. Utan den här bindningen tappar teamet
+  # storage.buckets.get, getIamPolicy och setIamPolicy i samma stund som policyn
+  # ersätter projectEditor. Då går bootstrap varken att planera eller rulla
+  # tillbaka av någon annan än projektägarna.
+  binding {
+    role = "roles/storage.legacyBucketOwner"
+
+    members = [
+      for member in var.team_members : "user:${member}"
+    ]
+  }
+}
+
+resource "google_storage_bucket_iam_policy" "terraform_state" {
+  bucket      = google_storage_bucket.terraform_state.name
+  policy_data = data.google_iam_policy.terraform_state.policy_data
+}
+
 resource "google_service_account_iam_member" "cicd_workload_identity" {
   service_account_id = google_service_account.cicd.name
   role               = "roles/iam.workloadIdentityUser"
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repo}"
 }
-

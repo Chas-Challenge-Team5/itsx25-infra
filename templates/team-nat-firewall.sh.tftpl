@@ -1,0 +1,33 @@
+#!/bin/bash
+set -euo pipefail
+
+# Only modify chains owned by this configuration. Wait for other iptables users.
+iptables-restore --wait 10 --noflush <<'RULES'
+*filter
+:TEAM-NAT-INPUT - [0:0]
+:TEAM-NAT-FORWARD - [0:0]
+-F TEAM-NAT-INPUT
+-F TEAM-NAT-FORWARD
+-A TEAM-NAT-INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+-A TEAM-NAT-INPUT -s ${subnet_cidr} -p tcp -m multiport --dports ${nat_tcp_ports} -j DROP
+-A TEAM-NAT-INPUT -j RETURN
+-A TEAM-NAT-FORWARD -m conntrack --ctstate INVALID -j DROP
+-A TEAM-NAT-FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+-A TEAM-NAT-FORWARD -s ${subnet_cidr} -p tcp -m multiport --dports ${nat_tcp_ports} -m conntrack --ctstate NEW -j ACCEPT
+-A TEAM-NAT-FORWARD -j DROP
+COMMIT
+RULES
+iptables -w 10 -C INPUT -j TEAM-NAT-INPUT 2>/dev/null || iptables -w 10 -I INPUT 1 -j TEAM-NAT-INPUT
+iptables -w 10 -C FORWARD -j TEAM-NAT-FORWARD 2>/dev/null || iptables -w 10 -I FORWARD 1 -j TEAM-NAT-FORWARD
+
+# The early-boot service only loads filters. Startup enables NAT after routing exists.
+if [[ "$${1:-}" == '--enable-forwarding' ]]; then
+    interface=$(ip -4 route show default | awk 'NR == 1 {print $5}')
+    if [[ -z "$interface" ]]; then
+        echo 'No default network interface; forwarding setup aborted.' >&2
+        exit 1
+    fi
+    iptables -w 10 -t nat -C POSTROUTING -o "$interface" -s '${subnet_cidr}' -j MASQUERADE 2>/dev/null || \
+        iptables -w 10 -t nat -A POSTROUTING -o "$interface" -s '${subnet_cidr}' -j MASQUERADE
+    sysctl -w net.ipv4.ip_forward=1
+fi
