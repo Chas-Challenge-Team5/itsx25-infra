@@ -172,49 +172,61 @@ resource "google_compute_instance" "jumphost" {
   }
 }
 
-# resource "google_compute_instance" "primary" {
-#   name         = "team${var.team_id}-primary"
-#   machine_type = "e2-small"
-#   zone         = local.primary_zone
+resource "google_compute_instance" "primary" {
+  name         = "team${var.team_id}-primary"
+  machine_type = "e2-micro"
+  zone         = local.primary_zone
 
-#   allow_stopping_for_update = true
+  allow_stopping_for_update = true
 
-#   tags = ["primary", "no-external-ip"]
+  tags = ["primary", "no-external-ip"]
 
-#   resource_policies = [google_compute_resource_policy.daily_schedule.id]
+  resource_policies = [google_compute_resource_policy.daily_schedule.id]
 
-#   boot_disk {
-#     initialize_params {
-#       image = "${var.project_id}/debian"
-#       size  = 20
-#     }
-#   }
+  # Inget service_account-block: primary behöver inget konto och ska inte ha
+  # default-kontot. Utan konto krävs inte heller serviceAccountUser för OS Login.
 
-#   network_interface {
-#     subnetwork = google_compute_subnetwork.team.id
-#     network_ip = cidrhost(local.subnet_cidr, 3)
-#   }
+  boot_disk {
+    initialize_params {
+      image = "${var.project_id}/debian"
+      size  = 20
+    }
+  }
 
-#   metadata = {
-#     enable-oslogin         = "TRUE"
-#     block-project-ssh-keys = true
-#     startup-script         = <<-EOT
-#       #!/bin/bash
-#       set -e
+  network_interface {
+    subnetwork = google_compute_subnetwork.team.id
+    network_ip = cidrhost(local.subnet_cidr, 3)
+  }
 
-#       if ! swapon --show | grep -q "/swapfile"; then
-#         fallocate -l 1G /swapfile
-#         chmod 600 /swapfile
-#         mkswap /swapfile
-#         swapon /swapfile
-#         echo '/swapfile none swap sw 0 0' >> /etc/fstab
-#       fi
+  metadata = {
+    enable-oslogin         = "TRUE"
+    block-project-ssh-keys = true
+    startup-script         = <<-EOT
+      #!/bin/bash
+      set -e
 
-#       echo 'vm.swappiness=20' > /etc/sysctl.d/01-swappiness.conf
-#       sysctl --system
-#     EOT
-#   }
-# }
+      if ! swapon --show | grep -q "/swapfile"; then
+        fallocate -l 1G /swapfile
+        chmod 600 /swapfile
+        mkswap /swapfile
+        swapon /swapfile
+        echo '/swapfile none swap sw 0 0' >> /etc/fstab
+      fi
+
+      echo 'vm.swappiness=20' > /etc/sysctl.d/01-swappiness.conf
+      sysctl --system
+    EOT
+  }
+
+  # Secure Boot är av med flit, oberoende av var.enable_secure_boot. Labbimagen
+  # har fortfarande den osignerade kärnan, så en ny VM med Secure Boot startar
+  # inte (#63). Kärnan måste bytas på primary innan det slås på.
+  shielded_instance_config {
+    enable_secure_boot          = false
+    enable_vtpm                 = true
+    enable_integrity_monitoring = true
+  }
+}
 
 resource "google_compute_firewall" "allow_internal" {
   name    = "team${var.team_id}-allow-internal"
@@ -230,7 +242,6 @@ resource "google_compute_firewall" "allow_internal" {
 }
 
 # Workshop #50: support both subnet SNAT and preserved tailnet source addresses.
-# This rule prepares access only; creating primary remains a separate change.
 resource "google_compute_firewall" "allow_primary_services" {
   name    = "team${var.team_id}-allow-primary-services"
   network = data.google_compute_network.team_vpc.name

@@ -16,11 +16,11 @@ Miljön ligger i regionen `europe-north2` i GCP-projektet `itsx25-lab`, som dela
 
 Jumphosten `team5-jumphost` har privat IP `10.0.5.2`, extern IP och IP-forwarding/NAT för teamets subnät. Teamet ansluter med SSH via Google IAP på TCP/22. Instruktörens SSH tillåts från det konfigurerade instruktörsnätet. Jumphosten startas 08:00 och stoppas 00:00 enligt tidszonen `Europe/Stockholm`.
 
-Routes för interna maskiner använder jumphosten som nästa hopp. `primary` är fortfarande utkommenterad och ingår inte i den aktiva Terraform-konfigurationen.
+Den interna instansen `team5-primary` har privat IP `10.0.5.3` och ingen extern IP. Den nås via jumphosten eller via tailnätets subnet route, och går ut mot internet genom jumphostens NAT. Routes för interna maskiner använder jumphosten som nästa hopp.
 
 ## Nätverkskarta
 
-Kartan visar konfigurationen i Terraform. Prickade linjer visar förberedda vägar för `primary`, som ännu är utkommenterad. Den är inte en liveinventering av miljön.
+Kartan visar konfigurationen i Terraform. Den är inte en liveinventering av miljön.
 
 ```text
 Klient
@@ -46,12 +46,12 @@ Google IAP
 |  |  | Extern IP            |--------> Internet                   |
 |  |  +----------------------+   |                                 |
 |  |             ^               |                                 |
-|  |             :               |                                 |
-|  |             : Route         |                                 |
-|  |             : 0.0.0.0/0     |                                 |
+|  |             |               |                                 |
+|  |             | Route         |                                 |
+|  |             | 0.0.0.0/0     |                                 |
 |  |  +----------------------+   |                                 |
-|  |  | primary: 10.0.5.3    |   |                                 |
-|  |  | UTKOMMENTERAD        |   |                                 |
+|  |  | team5-primary        |   |                                 |
+|  |  | 10.0.5.3             |   |                                 |
 |  |  | Ingen extern IP      |   |                                 |
 |  |  +----------------------+   |                                 |
 |  +-----------------------------+                                 |

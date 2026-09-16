@@ -27,6 +27,18 @@ resource "google_compute_instance_iam_member" "os_admin_logins" {
   member        = each.value
 }
 
+# Primary is created by the root module, so apply this after the deploy that creates it.
+# Without this grant sudo on primary depends on the class group's project-wide editor role.
+resource "google_compute_instance_iam_member" "primary_os_admin_logins" {
+  for_each = var.os_admin_users
+
+  project       = "itsx25-lab"
+  zone          = "europe-north2-b"
+  instance_name = "team5-primary"
+  role          = "roles/compute.osAdminLogin"
+  member        = each.value
+}
+
 # OS Login also requires Service Account User when #46 attaches this account.
 # Manage these grants separately before enabling OS Login with the attached account.
 resource "google_service_account_iam_member" "jumphost_service_account_users" {
