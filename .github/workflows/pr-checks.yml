@@ -80,7 +80,7 @@ jobs:
           terraform test
         working-directory: access
         
-              - name: Install TFLint
+      - name: Install TFLint
         env:
           TFLINT_VERSION: "0.55.1"
         run: |
