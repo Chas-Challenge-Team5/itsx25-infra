@@ -1,8 +1,10 @@
 terraform {
+  required_version = ">= 1.7.0, < 2.0.0"
+
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 8.2"
+      version = "~> 7.0"
     }
   }
 }
@@ -13,13 +15,12 @@ provider "google" {
 }
 
 locals {
-  instructor_vpc_self_link = "https://www.googleapis.com/compute/v1/projects/${var.project_id}/global/networks/instructor-vpc"
-  team_zone                = (var.team_id - 1) % 3
-  jumphost_zone            = coalesce(var.jumphost_zone, data.google_compute_zones.available.names[local.team_zone])
-  primary_zone             = coalesce(var.primary_zone, data.google_compute_zones.available.names[local.team_zone])
-  subnet_cidr              = "10.0.${var.team_id}.0/24"
-  tailnet_cidr             = "100.64.0.0/10"
-  nat_tcp_ports            = ["80", "443"]
+  team_zone     = (var.team_id - 1) % 3
+  jumphost_zone = coalesce(var.jumphost_zone, data.google_compute_zones.available.names[local.team_zone])
+  primary_zone  = coalesce(var.primary_zone, data.google_compute_zones.available.names[local.team_zone])
+  subnet_cidr   = "10.0.${var.team_id}.0/24"
+  tailnet_cidr  = "100.64.0.0/10"
+  nat_tcp_ports = ["80", "443"]
   nat_firewall_script = templatefile("${path.module}/templates/team-nat-firewall.sh.tftpl", {
     subnet_cidr   = local.subnet_cidr
     nat_tcp_ports = join(",", local.nat_tcp_ports)
@@ -87,6 +88,9 @@ resource "google_compute_resource_policy" "daily_schedule" {
 }
 
 resource "google_compute_instance" "jumphost" {
+  # checkov:skip=CKV_GCP_40:Jumphost är teamets avsedda internet-gateway och måste ha publik IP
+  # checkov:skip=CKV_GCP_36:IP forwarding krävs för NAT/routning till primary och Spectre (#50)
+  # checkov:skip=CKV_GCP_38:CSEK skulle kräva manuell nyckel vid varje boot, inte lämpligt för labbmiljön
   name         = "team${var.team_id}-jumphost"
   machine_type = "e2-micro"
   zone         = local.jumphost_zone
@@ -173,6 +177,7 @@ resource "google_compute_instance" "jumphost" {
 }
 
 resource "google_compute_instance" "primary" {
+  # checkov:skip=CKV_GCP_38:CSEK skulle kräva manuell nyckel vid varje boot, inte lämpligt för labbmiljön
   name         = "team${var.team_id}-primary"
   machine_type = "e2-micro"
   zone         = local.primary_zone
@@ -258,7 +263,6 @@ resource "google_compute_firewall" "allow_primary_services" {
   source_ranges = [local.subnet_cidr, local.tailnet_cidr]
   target_tags   = ["primary"]
 }
-
 
 resource "google_compute_firewall" "allow_forwarded_nat" {
   name    = "team${var.team_id}-allow-forwarded-nat"
