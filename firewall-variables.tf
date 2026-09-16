@@ -1,0 +1,10 @@
+variable "headscale_proxy_cidr" {
+  description = "Single IPv4 address of the instructor's Headscale reverse proxy, expressed as a /32 CIDR."
+  type        = string
+  default     = "10.0.0.2/32"
+
+  validation {
+    condition     = can(cidrnetmask(var.headscale_proxy_cidr)) && can(regex("/32$", var.headscale_proxy_cidr))
+    error_message = "headscale_proxy_cidr must be a valid IPv4 /32 CIDR."
+  }
+}

@@ -24,12 +24,22 @@ jobs:
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
 
+      - name: Test Headscale configuration and user setup (isolated)
+        run: sudo python3 headscale/check.py
+
       # Every PR runs without cloud credentials or backend access.
       - name: Terraform Init (root)
         run: terraform init -input=false -backend=false -lockfile=readonly
 
       - name: Terraform Validate (root)
         run: terraform validate
+
+      - name: Test firewall rules (mocked, no GCP access)
+        run: terraform test
+
+      - name: Test host firewall and NAT in isolated networks
+        timeout-minutes: 3
+        run: sudo env "PATH=$PATH" python3 tests/network_firewall.py
 
       # Bootstrap is applied separately; PR checks never access its state.
       - name: Terraform Init (bootstrap)
@@ -40,7 +50,7 @@ jobs:
         run: terraform validate
         working-directory: bootstrap
 
-      - name: Test WIF trust condition (no GCP access)
+      - name: Test IAM conditions and apply protection (no GCP access)
         run: |
           python -m pip install -r tests/requirements.txt
           python -m unittest discover -s tests -v
