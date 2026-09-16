@@ -8,4 +8,5 @@
 # Sparade planer kan innehålla känsliga värden.
 *.tfplan
 
+# Python test caches
 __pycache__/

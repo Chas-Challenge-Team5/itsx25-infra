@@ -24,6 +24,9 @@ jobs:
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
 
+      - name: Test Headscale configuration and user setup (isolated)
+        run: sudo python3 headscale/check.py
+
       # Every PR runs without cloud credentials or backend access.
       - name: Terraform Init (root)
         run: terraform init -input=false -backend=false -lockfile=readonly
