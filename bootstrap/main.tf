@@ -27,7 +27,7 @@ resource "random_id" "bucket_suffix" {
 }
 
 resource "google_storage_bucket" "terraform_state" {
-  # checkov:skip=CKV_GCP_62:Läsningar av state loggas med Cloud Audit Logs (storage_data_read nedan), så ingen separat loggbucket behövs
+  # checkov:skip=CKV_GCP_62:Läsningar och skrivningar av state loggas med Cloud Audit Logs (storage_data_read nedan), så ingen separat loggbucket behövs
   name     = "team${var.team_id}-tfstate-${random_id.bucket_suffix.hex}"
   location = "EU"
 
@@ -59,6 +59,11 @@ resource "google_project_iam_audit_config" "storage_data_read" {
 
   audit_log_config {
     log_type = "DATA_READ"
+  }
+
+  # Skrivningar till state och sparade deployplaner ska gå att spåra (#83).
+  audit_log_config {
+    log_type = "DATA_WRITE"
   }
 }
 
