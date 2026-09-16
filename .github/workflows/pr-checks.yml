@@ -79,3 +79,25 @@ jobs:
           terraform validate
           terraform test
         working-directory: access
+        
+              - name: Install TFLint
+        env:
+          TFLINT_VERSION: "0.55.1"
+        run: |
+          curl -sSLO "https://github.com/terraform-linters/tflint/releases/download/v${TFLINT_VERSION}/tflint_linux_amd64.zip"
+          curl -sSLO "https://github.com/terraform-linters/tflint/releases/download/v${TFLINT_VERSION}/checksums.txt"
+          sha256sum --ignore-missing -c checksums.txt
+          unzip tflint_linux_amd64.zip
+          sudo install -c -v tflint /usr/local/bin/
+
+      - name: TFLint (all roots)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          tflint --init --config "$PWD/.tflint.hcl"
+          tflint --recursive --config "$PWD/.tflint.hcl"
+
+      - name: Checkov (all roots)
+        run: |
+          python -m pip install checkov==3.2.334
+          checkov -d . --framework terraform --compact
