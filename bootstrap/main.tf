@@ -26,34 +26,13 @@ resource "random_id" "bucket_suffix" {
   byte_length = 4
 }
 
-resource "google_storage_bucket" "terraform_state_logs" {
-  name                        = "team${var.team_id}-tfstate-logs-${random_id.bucket_suffix.hex}"
-  location                    = "EU"
-  uniform_bucket_level_access = true
-  public_access_prevention    = "enforced"
-  force_destroy               = true
-
-  lifecycle_rule {
-    condition {
-      age = 30
-    }
-    action {
-      type = "Delete"
-    }
-  }
-}
-
 resource "google_storage_bucket" "terraform_state" {
+  # checkov:skip=CKV_GCP_62:Läsningar av state loggas med Cloud Audit Logs (storage_data_read nedan), så ingen separat loggbucket behövs
   name     = "team${var.team_id}-tfstate-${random_id.bucket_suffix.hex}"
   location = "EU"
 
   uniform_bucket_level_access = true
   public_access_prevention    = "enforced"
-
-  logging {
-    log_bucket        = google_storage_bucket.terraform_state_logs.name
-    log_object_prefix = "team${var.team_id}-tfstate-${random_id.bucket_suffix.hex}"
-  }
 
   lifecycle_rule {
     condition {
@@ -72,6 +51,7 @@ resource "google_storage_bucket" "terraform_state" {
     prevent_destroy = true
   }
 }
+
 
 resource "google_project_iam_audit_config" "storage_data_read" {
   project = var.project_id
