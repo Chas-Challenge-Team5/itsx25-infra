@@ -19,6 +19,21 @@ run "team5_access" {
     error_message = "Access must be limited to Team 5's jumphost."
   }
 
+  assert {
+    condition = (
+      keys(google_compute_instance_iam_member.primary_os_admin_logins) == keys(google_compute_instance_iam_member.os_admin_logins) &&
+      alltrue([
+        for identity, grant in google_compute_instance_iam_member.primary_os_admin_logins :
+        grant.project == "itsx25-lab" &&
+        grant.zone == "europe-north2-b" &&
+        grant.instance_name == "team5-primary" &&
+        grant.role == "roles/compute.osAdminLogin" &&
+        grant.member == identity
+      ])
+    )
+    error_message = "The same five members must have sudo on Team 5's primary, and nothing else."
+  }
+
 }
 
 run "reject_invalid_identity" {
