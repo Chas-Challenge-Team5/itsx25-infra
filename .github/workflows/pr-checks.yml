@@ -79,3 +79,27 @@ jobs:
           terraform validate
           terraform test
         working-directory: access
+
+      # Pinned hash from the v0.55.1 checksums.txt, so a replaced release asset fails here.
+      - name: Install TFLint
+        env:
+          TFLINT_VERSION: "0.55.1"
+          TFLINT_SHA256: "53379f38bc1e86c18885bfc85dc5fe2cd1f59729ae9a2afa16905189c1d67aa9"
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl -fsSLO "https://github.com/terraform-linters/tflint/releases/download/v${TFLINT_VERSION}/tflint_linux_amd64.zip"
+          echo "${TFLINT_SHA256}  tflint_linux_amd64.zip" | sha256sum -c -
+          unzip -q tflint_linux_amd64.zip tflint
+          sudo install -m 0755 tflint /usr/local/bin/tflint
+
+      - name: TFLint (all roots)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          tflint --init --config "$PWD/.tflint.hcl"
+          tflint --recursive --config "$PWD/.tflint.hcl"
+
+      - name: Checkov (all roots)
+        run: |
+          python -m pip install checkov==3.2.334
+          checkov -d . --framework terraform --compact

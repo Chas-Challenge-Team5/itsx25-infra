@@ -1,4 +1,6 @@
 terraform {
+  required_version = ">= 1.7.0, < 2.0.0"
+
   required_providers {
     google = {
       source  = "hashicorp/google"
@@ -25,6 +27,7 @@ resource "random_id" "bucket_suffix" {
 }
 
 resource "google_storage_bucket" "terraform_state" {
+  # checkov:skip=CKV_GCP_62:Läsningar av state loggas med Cloud Audit Logs (storage_data_read nedan), så ingen separat loggbucket behövs
   name     = "team${var.team_id}-tfstate-${random_id.bucket_suffix.hex}"
   location = "EU"
 
