@@ -218,11 +218,11 @@ resource "google_compute_instance" "primary" {
     EOT
   }
 
-  # Secure Boot är av med flit, oberoende av var.enable_secure_boot. Labbimagen
-  # har fortfarande den osignerade kärnan, så en ny VM med Secure Boot startar
-  # inte (#63). Kärnan måste bytas på primary innan det slås på.
+  # Den befintliga disken kör den signerade kärnan sedan #79. Labbimagen har
+  # fortfarande den osignerade, så en ny primary startar inte med Secure Boot
+  # (#63). Byts instansen måste kärnan bytas med Secure Boot av först.
   shielded_instance_config {
-    enable_secure_boot          = false
+    enable_secure_boot          = var.enable_secure_boot
     enable_vtpm                 = true
     enable_integrity_monitoring = true
   }
