@@ -1,9 +1,7 @@
-project_id = "skymill-gcp-test"
-team_id    = 1
+project_id = "itsx25-lab"
+team_id    = 5
 
-ssh_users = [
-  {
-    username   = "dehe"
-    public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILYqu1F6xW942A1Pn82NPeZQBsLEB2yqOK2bdbwkVzna"
-  }
-]
+# Prepare and boot-test a signed kernel before changing this to true.
+enable_secure_boot = false
+
+# OS Login users are configured in access/terraform.tfvars.

@@ -44,6 +44,34 @@ class ConfigurationTests(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get("HEADSCALE_TEST_BINARY"), "Set HEADSCALE_TEST_BINARY for real binary tests")
 class BinaryTests(unittest.TestCase):
+    @unittest.skipUnless(hasattr(os, "geteuid") and os.geteuid() == 0, "Requires root to test service-user ownership")
+    def test_config_validation_creates_data_as_service_user(self):
+        import pwd
+
+        account = pwd.getpwnam("nobody")
+        binary = os.environ["HEADSCALE_TEST_BINARY"]
+        with tempfile.TemporaryDirectory(prefix="headscale-owner-test-") as directory:
+            root = Path(directory)
+            root.chmod(0o755)
+            data = root / "data"
+            data.mkdir(mode=0o750)
+            os.chown(data, account.pw_uid, account.pw_gid)
+            config = SETUP.configuration("https://hs.example.invalid", "tail.example.invalid")
+            config["noise"]["private_key_path"] = str(data / "noise.key")
+            config["database"]["sqlite"]["path"] = str(data / "db.sqlite")
+            config["unix_socket"] = str(data / "headscale.sock")
+            path = root / "config.yaml"
+            path.write_text(json.dumps(config), encoding="utf-8")
+            os.chown(path, 0, account.pw_gid)
+            path.chmod(0o640)
+            SETUP.validate_as_service_user(path, binary, account.pw_name)
+            key_before = (data / "noise.key").read_bytes()
+            SETUP.validate_as_service_user(path, binary, account.pw_name)
+            self.assertEqual((data / "noise.key").read_bytes(), key_before)
+            for filename in ("noise.key", "db.sqlite"):
+                self.assertEqual((data / filename).stat().st_uid, account.pw_uid)
+                self.assertEqual((data / filename).stat().st_mode & 0o007, 0)
+
     def test_real_config_and_repeatable_user_creation(self):
         binary = os.environ["HEADSCALE_TEST_BINARY"]
         with tempfile.TemporaryDirectory(prefix="headscale-test-") as directory:

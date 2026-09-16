@@ -87,6 +87,16 @@ def ensure_users(binary="/usr/bin/headscale", config="/etc/headscale/config.yaml
             run(binary, "--config", config, "users", "create", user)
 
 
+def validate_as_service_user(config, binary="/usr/bin/headscale", user="headscale"):
+    # configtest creates the Noise key and SQLite database, not just a syntax check.
+    # Use the same identity as the service so retries cannot create root-owned data.
+    previous_umask = os.umask(0o077)  # Match the package's systemd UMask.
+    try:
+        return run("runuser", "--user", user, "--", binary, "--config", str(config), "configtest")
+    finally:
+        os.umask(previous_umask)
+
+
 def install(source):
     import fcntl
 
@@ -136,14 +146,15 @@ def install(source):
                     target.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
                     shutil.chown(target, user="root", group="headscale")
                     target.chmod(0o640)
-                    run("/usr/bin/headscale", "--config", str(target), "configtest")
+                    run("install", "-d", "-m", "0750", "-o", "headscale", "-g", "headscale", "/var/lib/headscale")
+                    validate_as_service_user(target)
                 except Exception:
                     run("systemctl", "disable", "--now", "headscale.service", check=False)
                     raise
                 finally:
                     run("systemctl", "unmask", "--runtime", "headscale.service")
 
-        run("/usr/bin/headscale", "--config", str(target), "configtest")
+        validate_as_service_user(target)
         run("systemctl", "enable", "--now", "headscale.service")
         for attempt in range(30):
             result = run("/usr/bin/headscale", "users", "list", "--output", "json", check=False)

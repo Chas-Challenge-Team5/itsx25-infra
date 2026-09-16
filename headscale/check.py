@@ -10,6 +10,8 @@ from setup import download_package
 
 with tempfile.TemporaryDirectory(prefix="headscale-check-") as directory:
     root = Path(directory)
+    # The privilege-drop test must be able to execute the extracted binary.
+    root.chmod(0o755)
     package = root / "headscale.deb"
     download_package(package)
     subprocess.run(["dpkg-deb", "--extract", str(package), str(root / "package")], check=True)
