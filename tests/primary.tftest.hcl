@@ -47,14 +47,31 @@ run "primary_is_internal_and_hardened" {
     error_message = "Primary must have no service account, OS Login only and a startup script with a valid shebang."
   }
 
-  # Secure Boot stays off even when the jumphost has it, since the lab image kernel is unsigned (#63).
+  # Both disks run a signed kernel (#63, #79), so primary follows the jumphost's setting.
   assert {
     condition = (
-      google_compute_instance.primary.shielded_instance_config[0].enable_secure_boot == false &&
+      google_compute_instance.primary.shielded_instance_config[0].enable_secure_boot == true &&
       google_compute_instance.primary.shielded_instance_config[0].enable_vtpm == true &&
       google_compute_instance.primary.shielded_instance_config[0].enable_integrity_monitoring == true &&
       google_compute_instance.jumphost.shielded_instance_config[0].enable_secure_boot == true
     )
-    error_message = "Primary must keep vTPM and integrity monitoring, with Secure Boot off until its kernel is replaced."
+    error_message = "Primary must have Secure Boot, vTPM and integrity monitoring when enable_secure_boot is true."
+  }
+}
+
+run "primary_secure_boot_follows_variable" {
+  command = plan
+
+  variables {
+    enable_secure_boot = false
+  }
+
+  assert {
+    condition = (
+      google_compute_instance.primary.shielded_instance_config[0].enable_secure_boot == false &&
+      google_compute_instance.primary.shielded_instance_config[0].enable_vtpm == true &&
+      google_compute_instance.primary.shielded_instance_config[0].enable_integrity_monitoring == true
+    )
+    error_message = "Turning off Secure Boot must keep vTPM and integrity monitoring on primary."
   }
 }

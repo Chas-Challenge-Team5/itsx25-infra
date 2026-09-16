@@ -33,7 +33,7 @@ variable "instructor_cidr" {
 }
 
 variable "enable_secure_boot" {
-  description = "Enable only after preparing and boot-testing a signed kernel. Changing this setting requires a VM stop/start; a fresh VM from the current lab image must be prepared first."
+  description = "Secure Boot for both jumphost and primary. Enable only after preparing and boot-testing a signed kernel on each disk (scripts/prepare-secure-boot.sh). Changing this setting requires a VM stop/start; a fresh VM from the current lab image must be prepared first."
   type        = bool
   default     = false
 }
