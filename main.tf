@@ -21,10 +21,22 @@ locals {
   subnet_cidr   = "10.0.${var.team_id}.0/24"
   tailnet_cidr  = "100.64.0.0/10"
   nat_tcp_ports = ["80", "443"]
+  # Spectre är samma värd som Headscale-proxyn (#51).
+  spectre_cidr = var.headscale_proxy_cidr
   nat_firewall_script = templatefile("${path.module}/templates/team-nat-firewall.sh.tftpl", {
     subnet_cidr   = local.subnet_cidr
     nat_tcp_ports = join(",", local.nat_tcp_ports)
+    tailnet_cidr  = local.tailnet_cidr
+    spectre_cidr  = local.spectre_cidr
   })
+  # Svarar bara på tailnätet och bara för labbzonen, som Split DNS skickar hit.
+  dnsmasq_config = <<-EOT
+    interface=tailscale0
+    bind-dynamic
+    no-resolv
+    no-hosts
+    server=/${var.lab_dns_zone}/169.254.169.254
+  EOT
 }
 
 data "google_compute_zones" "available" {
@@ -166,6 +178,17 @@ resource "google_compute_instance" "jumphost" {
 
       /usr/local/sbin/team-nat-firewall --enable-forwarding
       sysctl --system
+
+      # DNS-proxy för Split DNS (#51). Konfigurationen skrivs före installationen,
+      # så att paketets standardinställning aldrig lyssnar på alla gränssnitt.
+      mkdir -p /etc/dnsmasq.d
+      echo '${base64encode(local.dnsmasq_config)}' | base64 --decode > /etc/dnsmasq.d/tailscale-split-dns.conf
+      if ! dpkg-query -W -f='$${Status}' dnsmasq 2>/dev/null | grep -q 'install ok installed'; then
+        apt-get update
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends dnsmasq
+      fi
+      systemctl enable dnsmasq.service
+      systemctl restart dnsmasq.service
     EOT
   }
 

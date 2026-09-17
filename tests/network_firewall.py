@@ -67,7 +67,7 @@ class FirewallNetworkTests(unittest.TestCase):
         cls.temporary = tempfile.TemporaryDirectory(prefix='issue31-')
         cls.addClassCleanup(cls.cleanup)
         template = Path(__file__).resolve().parents[1] / 'templates/team-nat-firewall.sh.tftpl'
-        expression = f'jsonencode(templatefile({json.dumps(str(template))}, {{subnet_cidr="10.0.5.0/24",nat_tcp_ports="80,443"}}))'
+        expression = f'jsonencode(templatefile({json.dumps(str(template))}, {{subnet_cidr="10.0.5.0/24",nat_tcp_ports="80,443",tailnet_cidr="100.64.0.0/10",spectre_cidr="10.0.0.2/32"}}))'
         rendered = subprocess.run(['terraform', 'console', '-no-color'], input=expression + '\n',
                                   cwd=cls.temporary.name, text=True, capture_output=True, check=True)
         cls.script = Path(cls.temporary.name) / 'firewall.sh'
@@ -217,12 +217,13 @@ class FirewallNetworkTests(unittest.TestCase):
                             if reload_filter:
                                 self.load()
                             for address, port, translated in (
-                                ('10.0.5.3', 8000, '10.0.5.2'),
+                                ('10.0.5.3', 8000, '10.0.5.2' if snat else '100.64.0.10'),
+                                # Spectre is always masqueraded by the helper (#51).
                                 ('10.0.0.2', 443, '192.0.2.1'),
                             ):
                                 result = self.probe(address, port, role='t')
                                 self.assertEqual(result.returncode, 0, result.stderr)
-                                self.assertEqual(result.stdout.strip(), translated if snat else '100.64.0.10')
+                                self.assertEqual(result.stdout.strip(), translated)
                                 self.ns('t', 'ping', '-n', '-c', '1', '-W', '1', address)
                             # The downstream deny/stateful rules must still run.
                             self.assertNotEqual(self.probe('10.0.5.3', 8080, role='t').returncode, 0)
@@ -233,13 +234,12 @@ class FirewallNetworkTests(unittest.TestCase):
                     finally:
                         self.remove_tailnet()
 
-    def test_spectre_specific_masquerade_preserves_non_snat_primary_routing(self):
-        # Model #51's separate destination-bound NAT, not an installed production rule.
-        rule = ('-s', '100.64.0.0/10', '-d', '10.0.0.2/32', '-j', 'MASQUERADE')
+    def test_spectre_masquerade_is_limited_to_tailnet_sources(self):
+        rule = '-A POSTROUTING -s 100.64.0.0/10 -d 10.0.0.2/32 -o uplink -j MASQUERADE'
+        self.assertIn(rule, self.ns('r', 'iptables', '-t', 'nat', '-S', 'POSTROUTING').stdout)
         for first in (False, True):
             with self.subTest(tailscale_first=first):
                 self.configure_tailnet(first, snat=False)
-                self.ns('r', 'iptables', '-t', 'nat', '-A', 'POSTROUTING', *rule)
                 try:
                     primary = self.probe('10.0.5.3', 8000, role='t')
                     spectre = self.probe('10.0.0.2', 443, role='t')
@@ -249,8 +249,17 @@ class FirewallNetworkTests(unittest.TestCase):
                     self.assertEqual(spectre.stdout.strip(), '192.0.2.1')
                     self.ns('t', 'ping', '-n', '-c', '1', '-W', '1', '10.0.0.2')
                 finally:
-                    self.ns('r', 'iptables', '-t', 'nat', '-D', 'POSTROUTING', *rule)
                     self.remove_tailnet()
+
+    def test_reload_removes_manual_broad_spectre_masquerade(self):
+        # The rule added by hand during #51 matched every source and interface.
+        broad = ('-d', '10.0.0.2/32', '-j', 'MASQUERADE')
+        self.ns('r', 'iptables', '-t', 'nat', '-A', 'POSTROUTING', *broad)
+        self.ns('r', 'iptables', '-t', 'nat', '-A', 'POSTROUTING', *broad)
+        self.load()
+        nat = self.ns('r', 'iptables', '-t', 'nat', '-S', 'POSTROUTING').stdout
+        self.assertNotIn('-A POSTROUTING -d 10.0.0.2/32 -j MASQUERADE', nat)
+        self.assertEqual(nat.count('-s 100.64.0.0/10 -d 10.0.0.2/32'), 1)
 
     def test_tailnet_source_on_non_overlay_interface_does_not_bypass_filter(self):
         # A CGNAT address on a LAN interface must not get the overlay exception.
@@ -284,7 +293,8 @@ for line in sys.stdin:
             lines = self.ns('r', 'iptables', '-S', chain).stdout.splitlines()
             self.assertEqual(lines.count(f'-A {chain} -j {target}'), 1)
         nat = self.ns('r', 'iptables', '-t', 'nat', '-S', 'POSTROUTING').stdout
-        self.assertEqual(nat.count('MASQUERADE'), 1)
+        # One rule for the team subnet and one for tailnet traffic to Spectre.
+        self.assertEqual(nat.count('MASQUERADE'), 2)
         self.assertIn('-A UNRELATED -j RETURN', self.ns('r', 'iptables', '-S', 'UNRELATED').stdout)
 
     def test_rules_can_be_rebuilt_after_loss_of_runtime_state(self):

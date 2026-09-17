@@ -37,3 +37,14 @@ variable "enable_secure_boot" {
   type        = bool
   default     = false
 }
+
+variable "lab_dns_zone" {
+  description = "Labbzonen som tailnätet slår upp via jumphostens dnsmasq (Split DNS, #51)."
+  type        = string
+  default     = "itsx25.chas-lab.dev"
+
+  validation {
+    condition     = can(regex("^([a-z0-9]([a-z0-9-]*[a-z0-9])?[.])+[a-z]{2,}$", var.lab_dns_zone))
+    error_message = "lab_dns_zone must be a lowercase DNS name without a trailing dot."
+  }
+}
