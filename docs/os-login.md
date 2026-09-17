@@ -1,8 +1,9 @@
 # OS Login för Team 5 (issue #12)
 
-> **Uppdatering:** Secure Boot är sedan #76 och #81 aktiverat för både jumphost
-> och primary. Texten nedan beskriver läget vid ursprunglig verifiering, då
-> Secure Boot var avstängt i väntan på ett signerat kärnbyte.
+> **Uppdatering:** Secure Boot är sedan #63 (jumphost) och #79/#81 (primary)
+> aktiverat för både jumphost och primary. Texten nedan beskriver läget vid
+> ursprunglig verifiering, då Secure Boot var avstängt i väntan på ett
+> signerat kärnbyte.
 
 ## Verifiering 14 september 2026
 
@@ -19,7 +20,7 @@ jumphosten och grundimagen har ännu inte fått kärnbytet.
 Införandet hanteras i [issue #63](https://github.com/Chas-Challenge-Team5/itsx25-infra/issues/63).
 `enable_secure_boot` var då som standard `false` så att OS Login kunde införas
 separat från kärnbytet. vTPM och integrity monitoring behölls aktiverade genom
-hela övergången. Secure Boot är nu aktiverat för båda maskinerna (#76, #81).
+hela övergången. Secure Boot är nu aktiverat för båda maskinerna (#63, #79, #81).
 Att GCP visar VM:n som RUNNING bevisar inte att operativsystemet har startat.
 
 Efter testet återställdes VM:n till tidigare SSH-metadata och Secure Boot av.
@@ -89,10 +90,12 @@ och anslutet tjänstekonto behöver verifieras efter införandet.
    Användare från en annan organisation kan behöva OS Login External User,
    som inte delas ut av modulen.
 4. Kontrollera att den anpassade Debian-imagen stöder OS Login. Vid den
-   ursprungliga övergången lämnades Secure Boot avstängt tills den signerade
-   kärnan infördes och testades (se #76). Granska rotmodulens plan före merge:
-   OS Login aktiveras och metadata-nycklarna tas bort. vTPM/integrity monitoring
-   ska behållas. Secure Boot är numera aktiverat som standard för nya instanser.
+   ursprungliga övergången lämnades Secure Boot avstängt tills de signerade
+   kärnorna infördes och testades (se #63 för jumphost och #79 för primary).
+   Granska rotmodulens plan före merge: OS Login aktiveras och metadata-nycklarna
+   tas bort. vTPM/integrity monitoring ska behållas. `enable_secure_boot` är
+   fortfarande `false` som standard, och labbimagen har ännu den osignerade
+   kärnan (#63) — Secure Boot aktiveras inte automatiskt för nya instanser.
    Utred all oväntad VM-ersättning eller stopp/start innan införandet.
 5. Samordna införandet med #28/PR #62: det nya deployflödet ska finnas på main
    och kräver granskning av den privata planen och environment-godkännande före apply.
@@ -100,7 +103,7 @@ och anslutet tjänstekonto behöver verifieras efter införandet.
    GCP-autentisering i PR-jobbet efter #62. Inför sedan OS Login. Vid den
    ursprungliga övergången skedde detta med `enable_secure_boot = false`,
    eftersom Secure Boot krävde ett separat verifierat införande (nu slutfört
-   genom #76 och #81).
+   genom #63, #79 och #81).
    Håll administratören tillgänglig tills alla fem har testat en ny inloggning:
 
    ```powershell
