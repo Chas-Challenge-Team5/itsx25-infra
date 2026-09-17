@@ -114,7 +114,7 @@ class ConfigurationTests(unittest.TestCase):
                 backups = list(Path(directory).glob("config.yaml.*.bak"))
                 self.assertEqual(len(backups), 1)
                 self.assertEqual(json.loads(backups[0].read_text()), old)
-                self.assertFalse((Path(directory) / ".config.yaml.new").exists())
+                self.assertFalse(SETUP.candidate_path(target).exists())
 
     @unittest.skipUnless(os.name == "posix" and Path("/run/lock").is_dir(), "Requires the Linux lock directory")
     def test_reconfigure_refuses_other_changes(self):
@@ -183,6 +183,11 @@ class BinaryTests(unittest.TestCase):
             path = Path(directory) / "config.yaml"
             path.write_text(json.dumps(config), encoding="utf-8")
             SETUP.run(binary, "--config", str(path), "configtest")
+            # reconfigure validates the new file under this name before replacing the old one.
+            candidate = SETUP.candidate_path(path)
+            candidate.write_text(json.dumps(config), encoding="utf-8")
+            SETUP.run(binary, "--config", str(candidate), "configtest")
+            candidate.unlink()
             with (Path(directory) / "server.log").open("w+") as log:
                 server = subprocess.Popen([binary, "--config", str(path), "serve"], stdout=log, stderr=log)
                 try:
