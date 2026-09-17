@@ -24,6 +24,7 @@ labbzonen till en jumphost som ännu inte svarar.
 
 1. Godkänn deployen efter merge. Planen ska bara ändra jumphostens
    startup-script, utan omstart.
+
 2. Kör det nya startup-scriptet på jumphosten, så att hjälpscriptet och dnsmasq
    installeras:
 
@@ -37,6 +38,7 @@ labbzonen till en jumphost som ännu inte svarar.
    `POSTROUTING` ska ha regeln `-s 100.64.0.0/10 -d 10.0.0.2/32 -o ens4 -j MASQUERADE`
    och inte längre `-d 10.0.0.2/32 -j MASQUERADE`. dnsmasq ska lyssna på
    `100.64.0.2:53`.
+
 3. Kontrollera rutterna och godkänn dem. `approve-routes` ersätter också hela
    listan:
 
@@ -49,7 +51,7 @@ labbzonen till en jumphost som ännu inte svarar.
    ```
 
 4. Slå på Split DNS. Kopiera både `headscale/setup.py` och
-   `headscale/policy.hujson` från main till jumphosten och kör:
+   `headscale/policy.hujson` från main till jumphostens hemkatalog och kör:
 
    ```bash
    python3 setup.py render \
@@ -57,6 +59,7 @@ labbzonen till en jumphost som ännu inte svarar.
      --base-domain team5.arpa \
      --split-dns-resolver 100.64.0.2 \
      --output ~/headscale-config-51.json
+
    sudo python3 setup.py reconfigure --config ~/headscale-config-51.json
    ```
 
@@ -79,10 +82,10 @@ ping team5-jumphost.team5.arpa
 curl -fsS https://team5.itsx25.chas-lab.dev/health
 ```
 
-- `spectre.itsx25.chas-lab.dev` ska ge `10.0.0.2`.
-- `nslookup example.com 100.64.0.2` ska avvisas (`REFUSED`), eftersom jumphosten
+* `spectre.itsx25.chas-lab.dev` ska ge `10.0.0.2`.
+* `nslookup example.com 100.64.0.2` ska avvisas (`REFUSED`), eftersom jumphosten
   bara svarar för labbzonen.
-- MagicDNS och Headscales HTTPS-adress ska fortsätta fungera.
+* MagicDNS och Headscales HTTPS-adress ska fortsätta fungera.
 
 ## Åtkomstpolicy (#52)
 
@@ -94,11 +97,34 @@ genom att kopiera filen, kontrollera den och sedan ladda om Headscale:
 
 ```bash
 sudo cp /etc/headscale/policy.hujson /etc/headscale/policy.hujson.bak.$(date -u +%Y%m%dT%H%M%SZ)
-sudo cp headscale/policy.hujson /etc/headscale/policy.hujson
+sudo cp ~/policy.hujson /etc/headscale/policy.hujson
 sudo chown root:headscale /etc/headscale/policy.hujson
 sudo chmod 0640 /etc/headscale/policy.hujson
 sudo headscale policy check -f /etc/headscale/policy.hujson
 sudo systemctl reload headscale
+```
+
+Testa sedan från en klient:
+
+```bash
+ssh <användare>@10.0.5.2
+nslookup spectre.itsx25.chas-lab.dev 100.64.0.2
+```
+
+Vid problem återställs den tidigare `.bak`-filen och Headscale laddas om:
+
+```bash
+sudo cp /etc/headscale/policy.hujson.bak.<tid> /etc/headscale/policy.hujson
+sudo chown root:headscale /etc/headscale/policy.hujson
+sudo chmod 0640 /etc/headscale/policy.hujson
+sudo headscale policy check -f /etc/headscale/policy.hujson
+sudo systemctl reload headscale
+```
+
+Vid nyinstallation måste både `setup.py` och `policy.hujson` finnas bredvid
+varandra på jumphosten. `setup.py` installerar därefter policyn till
+`/etc/headscale/policy.hujson` och vägrar skriva över en befintlig policy som
+skiljer sig från repots version.
 
 ## Återställning
 
@@ -106,9 +132,18 @@ sudo systemctl reload headscale
 # Split DNS
 sudo cp /etc/headscale/config.yaml.<tid>.bak /etc/headscale/config.yaml
 sudo systemctl restart headscale
+
+# Policy
+sudo cp /etc/headscale/policy.hujson.bak.<tid> /etc/headscale/policy.hujson
+sudo chown root:headscale /etc/headscale/policy.hujson
+sudo chmod 0640 /etc/headscale/policy.hujson
+sudo headscale policy check -f /etc/headscale/policy.hujson
+sudo systemctl reload headscale
+
 # Rutten till Spectre
 sudo headscale nodes approve-routes --identifier 2 --routes 10.0.5.0/24
 sudo tailscale set --advertise-routes=10.0.5.0/24
+
 # dnsmasq
 sudo systemctl disable --now dnsmasq
 ```
