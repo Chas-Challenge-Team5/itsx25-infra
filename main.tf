@@ -41,6 +41,9 @@ locals {
     sshd_config     = filebase64("${path.module}/templates/sshd-team5.conf")
     resolved_config = filebase64("${path.module}/templates/resolved-team5.conf")
   })
+  ops_agent_script = templatefile("${path.module}/templates/team-ops-agent.sh.tftpl", {
+    config = filebase64("${path.module}/templates/ops-agent-config.yaml")
+  })
 }
 
 data "google_compute_zones" "available" {
@@ -162,6 +165,12 @@ resource "google_compute_instance" "jumphost" {
       chmod 750 /usr/local/sbin/team-host-hardening
       /usr/local/sbin/team-host-hardening || echo 'team-host-hardening failed; see the lines above.' >&2
 
+      # Systemjournalen till Cloud Logging (#92). En gång installerad startar
+      # agenten själv vid boot, även om apt inte når ut just då.
+      echo '${base64encode(local.ops_agent_script)}' | base64 --decode > /usr/local/sbin/team-ops-agent
+      chmod 750 /usr/local/sbin/team-ops-agent
+      /usr/local/sbin/team-ops-agent || echo 'team-ops-agent failed; see the lines above.' >&2
+
       if ! swapon --show | grep -q "/swapfile"; then
         fallocate -l 1G /swapfile
         chmod 600 /swapfile
@@ -274,8 +283,13 @@ resource "google_compute_instance" "primary" {
 
   resource_policies = [google_compute_resource_policy.daily_schedule.id]
 
-  # Inget service_account-block: primary behöver inget konto och ska inte ha
-  # default-kontot. Utan konto krävs inte heller serviceAccountUser för OS Login.
+  # Kontot får bara skriva loggar (#92), och scopet begränsar token till det.
+  # OS Login kräver serviceAccountUser på kontot, som delas ut i access/.
+  # Byte av konto eller scopes stoppar och startar VM:n.
+  service_account {
+    email  = "team${var.team_id}-primary@${var.project_id}.iam.gserviceaccount.com"
+    scopes = ["https://www.googleapis.com/auth/logging.write"]
+  }
 
   boot_disk {
     initialize_params {
@@ -301,6 +315,12 @@ resource "google_compute_instance" "primary" {
       echo '${base64encode(local.host_hardening_script)}' | base64 --decode > /usr/local/sbin/team-host-hardening
       chmod 750 /usr/local/sbin/team-host-hardening
       /usr/local/sbin/team-host-hardening || echo 'team-host-hardening failed; see the lines above.' >&2
+
+      # Systemjournalen till Cloud Logging (#92). En gång installerad startar
+      # agenten själv vid boot, även om apt inte når ut just då.
+      echo '${base64encode(local.ops_agent_script)}' | base64 --decode > /usr/local/sbin/team-ops-agent
+      chmod 750 /usr/local/sbin/team-ops-agent
+      /usr/local/sbin/team-ops-agent || echo 'team-ops-agent failed; see the lines above.' >&2
 
       if ! swapon --show | grep -q "/swapfile"; then
         fallocate -l 1G /swapfile
