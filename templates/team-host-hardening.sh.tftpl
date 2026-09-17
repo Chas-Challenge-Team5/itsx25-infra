@@ -1,0 +1,42 @@
+#!/bin/bash
+# Härdning av sshd och systemd-resolved på jumphost och primary (#86).
+# Sökvägarna kan bytas i testerna. På VM:arna används standardvärdena.
+set -euo pipefail
+
+etc="$${TEAM_ETC:-/etc}"
+sshd="$${TEAM_SSHD:-/usr/sbin/sshd}"
+systemctl="$${TEAM_SYSTEMCTL:-systemctl}"
+
+sshd_dir="$etc/ssh/sshd_config.d"
+sshd_conf="$sshd_dir/10-team5.conf"
+install -d -m 0755 "$sshd_dir"
+backup=""
+if [[ -e "$sshd_conf" ]]; then
+    backup=$(mktemp)
+    cp -p "$sshd_conf" "$backup"
+fi
+echo '${sshd_config}' | base64 --decode > "$sshd_conf.new"
+chmod 0644 "$sshd_conf.new"
+mv "$sshd_conf.new" "$sshd_conf"
+
+# Ett fel i konfigurationen får inte låsa ute någon. sshd laddas bara om när
+# hela konfigurationen godkänns, annars läggs den tidigare filen tillbaka.
+if ! "$sshd" -t -f "$etc/ssh/sshd_config"; then
+    if [[ -n "$backup" ]]; then
+        mv "$backup" "$sshd_conf"
+    else
+        rm -f "$sshd_conf"
+    fi
+    echo 'sshd -t failed; previous sshd configuration kept and sshd not reloaded.' >&2
+    exit 1
+fi
+[[ -n "$backup" ]] && rm -f "$backup"
+"$systemctl" reload ssh.service
+
+resolved_dir="$etc/systemd/resolved.conf.d"
+install -d -m 0755 "$resolved_dir"
+echo '${resolved_config}' | base64 --decode > "$resolved_dir/10-team5.conf"
+chmod 0644 "$resolved_dir/10-team5.conf"
+if "$systemctl" is-active --quiet systemd-resolved.service; then
+    "$systemctl" restart systemd-resolved.service
+fi

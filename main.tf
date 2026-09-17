@@ -37,6 +37,10 @@ locals {
     no-hosts
     server=/${var.lab_dns_zone}/169.254.169.254
   EOT
+  host_hardening_script = templatefile("${path.module}/templates/team-host-hardening.sh.tftpl", {
+    sshd_config     = filebase64("${path.module}/templates/sshd-team5.conf")
+    resolved_config = filebase64("${path.module}/templates/resolved-team5.conf")
+  })
 }
 
 data "google_compute_zones" "available" {
@@ -151,6 +155,12 @@ resource "google_compute_instance" "jumphost" {
     startup-script         = <<-EOT
       #!/bin/bash
       set -e
+
+      # Härdning av sshd och resolved (#86). Körs först så att ett senare fel inte
+      # hoppar över den, och ett fel här stoppar inte resten av scriptet.
+      echo '${base64encode(local.host_hardening_script)}' | base64 --decode > /usr/local/sbin/team-host-hardening
+      chmod 750 /usr/local/sbin/team-host-hardening
+      /usr/local/sbin/team-host-hardening || echo 'team-host-hardening failed; see the lines above.' >&2
 
       if ! swapon --show | grep -q "/swapfile"; then
         fallocate -l 1G /swapfile
@@ -285,6 +295,12 @@ resource "google_compute_instance" "primary" {
     startup-script         = <<-EOT
       #!/bin/bash
       set -e
+
+      # Härdning av sshd och resolved (#86). Körs först så att ett senare fel inte
+      # hoppar över den, och ett fel här stoppar inte resten av scriptet.
+      echo '${base64encode(local.host_hardening_script)}' | base64 --decode > /usr/local/sbin/team-host-hardening
+      chmod 750 /usr/local/sbin/team-host-hardening
+      /usr/local/sbin/team-host-hardening || echo 'team-host-hardening failed; see the lines above.' >&2
 
       if ! swapon --show | grep -q "/swapfile"; then
         fallocate -l 1G /swapfile
