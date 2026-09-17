@@ -75,6 +75,11 @@ def configuration(server_url, base_domain, resolver):
         "database": {"type": "sqlite", "sqlite": {
             "path": "/var/lib/headscale/db.sqlite", "write_ahead_log": True,
         }},
+        "policy": {
+          "mode": "file",
+          "path": "/etc/headscale/policy.hujson",
+        },
+
         "dns": {"magic_dns": True, "base_domain": base_domain,
                 "override_local_dns": False, "nameservers": {"global": [], "split": {SPLIT_DNS_ZONE: [resolver]}}},
         "unix_socket": "/var/run/headscale/headscale.sock",

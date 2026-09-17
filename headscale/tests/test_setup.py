@@ -36,6 +36,16 @@ class ConfigurationTests(unittest.TestCase):
         self.assertFalse(config["dns"]["override_local_dns"])
         self.assertEqual(config["trusted_proxies"], ["10.0.0.2/32"])
 
+    def test_policy_uses_file_mode(self):
+        config = SETUP.configuration("https://hs.example.com", "tail.example.com", RESOLVER)
+        self.assertEqual(
+            config["policy"],
+            {
+                "mode": "file",
+                "path": "/etc/headscale/policy.hujson",
+            },
+        )
+
     def test_split_dns_sends_only_the_lab_zone_to_the_jumphost(self):
         config = SETUP.configuration("https://hs.example.com", "tail.example.com", RESOLVER)
         self.assertEqual(config["dns"]["nameservers"],

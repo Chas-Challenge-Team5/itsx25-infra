@@ -1,0 +1,226 @@
+{
+  // =====================================================
+  // USERS / GROUPS
+  // =====================================================
+
+  "groups": {
+    "group:admins": [
+      "mattej@"
+    ],
+
+    "group:developers": [
+      "viktor@",
+      "armin@",
+      "abdi@",
+      "adam@"
+    ]
+
+    // Fictional company users can be added here when available.
+    // Example:
+    // "group:employees": [
+    //   "jon@",
+    //   "wilma@"
+    // ]
+  },
+
+  // =====================================================
+  // TAG OWNERS
+  // =====================================================
+
+  "tagOwners": {
+    "tag:jumphost": [
+      "admin@",
+      "group:admins"
+    ],
+
+    "tag:webserver": [
+      "group:admins",
+      "group:developers"
+    ],
+
+    "tag:database": [
+      "group:admins"
+    ]
+  },
+
+  // =====================================================
+  // ACCESS CONTROL
+  // =====================================================
+
+  "acls": [
+
+    // ---------------------------------------------------
+    // LAB ENVIRONMENT
+    // ---------------------------------------------------
+
+    // Admins and developers can use the Jumphost for DNS.
+    {
+      "action": "accept",
+      "src": [
+        "group:admins",
+        "group:developers"
+      ],
+      "dst": [
+        "tag:jumphost:53"
+      ]
+    },
+
+    // Admins and developers can SSH to the Jumphost.
+    {
+      "action": "accept",
+      "src": [
+        "group:admins",
+        "group:developers"
+      ],
+      "dst": [
+        "tag:jumphost:22"
+      ]
+    },
+
+    // Developers can access Spectre over HTTPS.
+    {
+      "action": "accept",
+      "src": [
+        "group:developers"
+      ],
+      "dst": [
+        "10.0.0.2:443"
+      ]
+    },
+
+    // Developers can access Spectre's HTTP server.
+    {
+      "action": "accept",
+      "src": [
+        "group:developers"
+      ],
+      "dst": [
+        "10.0.0.2/32:8000"
+      ]
+    },
+
+    // Admins have full access to Spectre.
+    {
+      "action": "accept",
+      "src": [
+        "group:admins"
+      ],
+      "dst": [
+        "10.0.0.2:*"
+      ]
+    },
+
+    // Developers can SSH to Spectre.
+    {
+      "action": "accept",
+      "src": [
+        "group:developers"
+      ],
+      "dst": [
+        "10.0.0.2:22"
+      ]
+    },
+
+    // Admins have full access to Primary.
+    {
+      "action": "accept",
+      "src": [
+        "group:admins"
+      ],
+      "dst": [
+        "10.0.5.3:*"
+      ]
+    },
+
+    // Developers can SSH to Primary.
+    // SSH is performed through the Jumphost.
+    {
+      "action": "accept",
+      "src": [
+        "group:developers"
+      ],
+      "dst": [
+        "10.0.5.3:22"
+      ]
+    },
+
+    // ---------------------------------------------------
+    // FICTIONAL COMPANY
+    // ---------------------------------------------------
+
+    // Developers can access company web servers
+    // over HTTP and HTTPS.
+    {
+      "action": "accept",
+      "src": [
+        "group:developers"
+      ],
+      "dst": [
+        "tag:webserver:80,443"
+      ]
+    },
+
+    // Fictional employees can access company web servers
+    // only over HTTPS.
+    // This rule can be enabled when real users are added
+    // to group:employees.
+    //
+    // {
+    //   "action": "accept",
+    //   "src": [
+    //     "group:employees"
+    //   ],
+    //   "dst": [
+    //     "tag:webserver:443"
+    //   ]
+    // },
+
+    // Web servers can access the database using PostgreSQL.
+    {
+      "action": "accept",
+      "src": [
+        "tag:webserver"
+      ],
+      "dst": [
+        "tag:database:5432"
+      ]
+    },
+
+    // Admins have full access to everything.
+    {
+      "action": "accept",
+      "src": [
+        "group:admins"
+      ],
+      "dst": [
+        "*:*"
+      ]
+    },
+
+    // ---------------------------------------------------
+    // SUBNET ROUTING
+    // ---------------------------------------------------
+
+    // Developers can access the entire lab subnet.
+    {
+      "action": "accept",
+      "src": [
+        "group:developers"
+      ],
+      "dst": [
+        "10.0.5.0/24:*"
+      ]
+    },
+
+    // Admins can access the entire lab subnet.
+    {
+      "action": "accept",
+      "src": [
+        "group:admins"
+      ],
+      "dst": [
+        "10.0.5.0/24:*"
+      ]
+    }
+  ]
+}
