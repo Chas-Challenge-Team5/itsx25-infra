@@ -34,8 +34,7 @@
     ],
 
     "tag:webserver": [
-      "group:admins",
-      "group:developers"
+      "group:admins"
     ],
 
     "tag:database": [
@@ -53,11 +52,10 @@
     // LAB ENVIRONMENT
     // ---------------------------------------------------
 
-    // Admins and developers can use the Jumphost for DNS.
+    // Developers can use the Jumphost for DNS.
     {
       "action": "accept",
       "src": [
-        "group:admins",
         "group:developers"
       ],
       "dst": [
@@ -65,11 +63,11 @@
       ]
     },
 
-    // Admins and developers can SSH to the Jumphost.
+    // Developers can SSH to the Jumphost.
+    // Admins already have full access through the *:* rule below.
     {
       "action": "accept",
       "src": [
-        "group:admins",
         "group:developers"
       ],
       "dst": [
@@ -99,17 +97,6 @@
       ]
     },
 
-    // Admins have full access to Spectre.
-    {
-      "action": "accept",
-      "src": [
-        "group:admins"
-      ],
-      "dst": [
-        "10.0.0.2:*"
-      ]
-    },
-
     // Developers can SSH to Spectre.
     {
       "action": "accept",
@@ -121,26 +108,26 @@
       ]
     },
 
-    // Admins have full access to Primary.
-    {
-      "action": "accept",
-      "src": [
-        "group:admins"
-      ],
-      "dst": [
-        "10.0.5.3:*"
-      ]
-    },
-
-    // Developers can SSH to Primary.
-    // SSH is performed through the Jumphost.
+    // Developers can access port 8000 on the lab subnet.
     {
       "action": "accept",
       "src": [
         "group:developers"
       ],
       "dst": [
-        "10.0.5.3:22"
+        "10.0.5.0/24:8000"
+      ]
+    },
+
+    // Developers can use ICMP on the lab subnet.
+    {
+      "action": "accept",
+      "src": [
+        "group:developers"
+      ],
+      "proto": "icmp",
+      "dst": [
+        "10.0.5.0/24:*"
       ]
     },
 
@@ -194,32 +181,6 @@
       ],
       "dst": [
         "*:*"
-      ]
-    },
-
-    // ---------------------------------------------------
-    // SUBNET ROUTING
-    // ---------------------------------------------------
-
-    // Developers can access the entire lab subnet.
-    {
-      "action": "accept",
-      "src": [
-        "group:developers"
-      ],
-      "dst": [
-        "10.0.5.0/24:*"
-      ]
-    },
-
-    // Admins can access the entire lab subnet.
-    {
-      "action": "accept",
-      "src": [
-        "group:admins"
-      ],
-      "dst": [
-        "10.0.5.0/24:*"
       ]
     }
   ]
