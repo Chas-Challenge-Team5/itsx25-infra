@@ -35,9 +35,9 @@ run "jumphost_is_protected_and_backed_up" {
       google_compute_resource_policy.jumphost_snapshots.name == "team5-jumphost-snapshots" &&
       google_compute_resource_policy.jumphost_snapshots.region == "europe-north2" &&
       google_compute_resource_policy.jumphost_snapshots.snapshot_schedule_policy[0].schedule[0].daily_schedule[0].days_in_cycle == 1 &&
-      google_compute_resource_policy.jumphost_snapshots.snapshot_schedule_policy[0].schedule[0].daily_schedule[0].start_time == "03:00"
+      google_compute_resource_policy.jumphost_snapshots.snapshot_schedule_policy[0].schedule[0].daily_schedule[0].start_time == "01:00"
     )
-    error_message = "The jumphost disk must be snapshotted daily at 03:00 UTC, while the VM is stopped."
+    error_message = "The jumphost disk must be snapshotted daily from 01:00 UTC, so the four-hour window ends before the VM starts."
   }
 
   assert {

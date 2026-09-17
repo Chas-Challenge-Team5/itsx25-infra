@@ -15,12 +15,14 @@ Headscale kör på `team5-jumphost` och all data ligger på jumphostens bootdisk
 - `prevent_destroy` på jumphosten. En plan som vill ersätta eller radera
   instansen avbryts redan i CI, innan någon kan godkänna den.
 - Resource policy `team5-jumphost-snapshots` tar en snapshot av disken varje dag
-  kl 03:00 UTC och sparar den i 7 dagar i EU. Snapshots finns kvar även om
+  med start 01:00 UTC och sparar den i 7 dagar i EU. Snapshots finns kvar även om
   disken raderas.
 
-03:00 UTC ligger inom `team5-daily-schedule`, som stänger av VM:n mellan 00:00
-och 08:00 svensk tid. Headscale är då nedstängd och har skrivit klart sin
-WAL-fil, så databasen i snapshoten är hel.
+GCP tar snapshoten någon gång inom fyra timmar från starttiden, alltså mellan
+01:00 och 05:00 UTC. `team5-daily-schedule` stänger av VM:n mellan 00:00 och
+08:00 svensk tid, vilket är 22:00 till 06:00 UTC på sommaren och 23:00 till
+07:00 UTC på vintern. Hela fönstret ligger därför inom stoppet. Headscale är
+nedstängd och har skrivit klart sin WAL-fil, så databasen i snapshoten är hel.
 
 Ska jumphosten ersättas med avsikt tas `prevent_destroy` bort i en egen PR, och
 skyddet stängs av precis före apply:
