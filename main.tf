@@ -21,9 +21,28 @@ locals {
   subnet_cidr   = "10.0.${var.team_id}.0/24"
   tailnet_cidr  = "100.64.0.0/10"
   nat_tcp_ports = ["80", "443"]
+  # Spectre är samma värd som Headscale-proxyn (#51).
+  spectre_cidr = var.headscale_proxy_cidr
   nat_firewall_script = templatefile("${path.module}/templates/team-nat-firewall.sh.tftpl", {
     subnet_cidr   = local.subnet_cidr
     nat_tcp_ports = join(",", local.nat_tcp_ports)
+    tailnet_cidr  = local.tailnet_cidr
+    spectre_cidr  = local.spectre_cidr
+  })
+  # Svarar bara på tailnätet och bara för labbzonen, som Split DNS skickar hit.
+  dnsmasq_config = <<-EOT
+    interface=tailscale0
+    bind-dynamic
+    no-resolv
+    no-hosts
+    server=/${var.lab_dns_zone}/169.254.169.254
+  EOT
+  host_hardening_script = templatefile("${path.module}/templates/team-host-hardening.sh.tftpl", {
+    sshd_config     = filebase64("${path.module}/templates/sshd-team5.conf")
+    resolved_config = filebase64("${path.module}/templates/resolved-team5.conf")
+  })
+  ops_agent_script = templatefile("${path.module}/templates/team-ops-agent.sh.tftpl", {
+    config = filebase64("${path.module}/templates/ops-agent-config.yaml")
   })
 }
 
@@ -98,6 +117,15 @@ resource "google_compute_instance" "jumphost" {
   allow_stopping_for_update = true
   can_ip_forward            = true
 
+  # Headscale-datan finns bara på den här disken (#85). prevent_destroy stoppar
+  # en ersättning redan i planen, deletion_protection stoppar en radering i GCP
+  # som görs utanför Terraform.
+  deletion_protection = true
+
+  lifecycle {
+    prevent_destroy = true
+  }
+
   tags = ["jumphost"]
 
   resource_policies = [google_compute_resource_policy.daily_schedule.id]
@@ -130,6 +158,18 @@ resource "google_compute_instance" "jumphost" {
     startup-script         = <<-EOT
       #!/bin/bash
       set -e
+
+      # Härdning av sshd och resolved (#86). Körs först så att ett senare fel inte
+      # hoppar över den, och ett fel här stoppar inte resten av scriptet.
+      echo '${base64encode(local.host_hardening_script)}' | base64 --decode > /usr/local/sbin/team-host-hardening
+      chmod 750 /usr/local/sbin/team-host-hardening
+      /usr/local/sbin/team-host-hardening || echo 'team-host-hardening failed; see the lines above.' >&2
+
+      # Systemjournalen till Cloud Logging (#92). En gång installerad startar
+      # agenten själv vid boot, även om apt inte når ut just då.
+      echo '${base64encode(local.ops_agent_script)}' | base64 --decode > /usr/local/sbin/team-ops-agent
+      chmod 750 /usr/local/sbin/team-ops-agent
+      /usr/local/sbin/team-ops-agent || echo 'team-ops-agent failed; see the lines above.' >&2
 
       if ! swapon --show | grep -q "/swapfile"; then
         fallocate -l 1G /swapfile
@@ -166,6 +206,17 @@ resource "google_compute_instance" "jumphost" {
 
       /usr/local/sbin/team-nat-firewall --enable-forwarding
       sysctl --system
+
+      # DNS-proxy för Split DNS (#51). Konfigurationen skrivs före installationen,
+      # så att paketets standardinställning aldrig lyssnar på alla gränssnitt.
+      mkdir -p /etc/dnsmasq.d
+      echo '${base64encode(local.dnsmasq_config)}' | base64 --decode > /etc/dnsmasq.d/tailscale-split-dns.conf
+      if ! dpkg-query -W -f='$${Status}' dnsmasq 2>/dev/null | grep -q 'install ok installed'; then
+        apt-get update
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends dnsmasq
+      fi
+      systemctl enable dnsmasq.service
+      systemctl restart dnsmasq.service
     EOT
   }
 
@@ -173,6 +224,50 @@ resource "google_compute_instance" "jumphost" {
     enable_secure_boot          = var.enable_secure_boot
     enable_vtpm                 = true
     enable_integrity_monitoring = true
+  }
+}
+
+# Daglig snapshot av jumphostens disk med Headscale-datan (#85). GCP tar den inom
+# fyra timmar från starttiden. 01:00-05:00 UTC ligger inom daily_schedule-stoppet
+# både sommar- och vintertid, så Headscale är nedstängd och databasen konsekvent.
+# Snapshots behålls när disken raderas, annars försvinner backupen med den.
+resource "google_compute_resource_policy" "jumphost_snapshots" {
+  name   = "team${var.team_id}-jumphost-snapshots"
+  region = var.region
+
+  snapshot_schedule_policy {
+    schedule {
+      daily_schedule {
+        days_in_cycle = 1
+        start_time    = "01:00"
+      }
+    }
+
+    retention_policy {
+      max_retention_days    = 7
+      on_source_disk_delete = "KEEP_AUTO_SNAPSHOTS"
+    }
+
+    snapshot_properties {
+      storage_locations = ["eu"]
+      labels = {
+        team    = "team${var.team_id}"
+        purpose = "headscale-backup"
+      }
+    }
+  }
+}
+
+# Disknamnet tas från instansens källa, så att en ny disk får schemat igen.
+resource "google_compute_disk_resource_policy_attachment" "jumphost_snapshots" {
+  name = google_compute_resource_policy.jumphost_snapshots.name
+  disk = reverse(split("/", google_compute_instance.jumphost.boot_disk[0].source))[0]
+  zone = google_compute_instance.jumphost.zone
+
+  # En policy som används går inte att radera. Kopplingen tas bort först när
+  # schemat ändras, eftersom policyn då ersätts under samma namn.
+  lifecycle {
+    replace_triggered_by = [google_compute_resource_policy.jumphost_snapshots]
   }
 }
 
@@ -188,8 +283,13 @@ resource "google_compute_instance" "primary" {
 
   resource_policies = [google_compute_resource_policy.daily_schedule.id]
 
-  # Inget service_account-block: primary behöver inget konto och ska inte ha
-  # default-kontot. Utan konto krävs inte heller serviceAccountUser för OS Login.
+  # Kontot får bara skriva loggar (#92), och scopet begränsar token till det.
+  # OS Login kräver serviceAccountUser på kontot, som delas ut i access/.
+  # Byte av konto eller scopes stoppar och startar VM:n.
+  service_account {
+    email  = "team${var.team_id}-primary@${var.project_id}.iam.gserviceaccount.com"
+    scopes = ["https://www.googleapis.com/auth/logging.write"]
+  }
 
   boot_disk {
     initialize_params {
@@ -209,6 +309,18 @@ resource "google_compute_instance" "primary" {
     startup-script         = <<-EOT
       #!/bin/bash
       set -e
+
+      # Härdning av sshd och resolved (#86). Körs först så att ett senare fel inte
+      # hoppar över den, och ett fel här stoppar inte resten av scriptet.
+      echo '${base64encode(local.host_hardening_script)}' | base64 --decode > /usr/local/sbin/team-host-hardening
+      chmod 750 /usr/local/sbin/team-host-hardening
+      /usr/local/sbin/team-host-hardening || echo 'team-host-hardening failed; see the lines above.' >&2
+
+      # Systemjournalen till Cloud Logging (#92). En gång installerad startar
+      # agenten själv vid boot, även om apt inte når ut just då.
+      echo '${base64encode(local.ops_agent_script)}' | base64 --decode > /usr/local/sbin/team-ops-agent
+      chmod 750 /usr/local/sbin/team-ops-agent
+      /usr/local/sbin/team-ops-agent || echo 'team-ops-agent failed; see the lines above.' >&2
 
       if ! swapon --show | grep -q "/swapfile"; then
         fallocate -l 1G /swapfile

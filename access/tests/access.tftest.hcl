@@ -63,4 +63,18 @@ run "service_account_access" {
     ])
     error_message = "Service Account User must target only the jumphost account and the same identities as OS Login."
   }
+
+  # Primary får ett eget konto för loggarna (#92), och OS Login kräver samma roll där.
+  assert {
+    condition = (
+      keys(google_service_account_iam_member.primary_service_account_users) == keys(google_compute_instance_iam_member.primary_os_admin_logins) &&
+      alltrue([
+        for identity, grant in google_service_account_iam_member.primary_service_account_users :
+        grant.service_account_id == "projects/itsx25-lab/serviceAccounts/team5-primary@itsx25-lab.iam.gserviceaccount.com" &&
+        grant.role == "roles/iam.serviceAccountUser" &&
+        grant.member == identity
+      ])
+    )
+    error_message = "The members with sudo on primary need Service Account User on team5-primary, and only there."
+  }
 }

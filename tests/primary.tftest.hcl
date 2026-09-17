@@ -39,12 +39,13 @@ run "primary_is_internal_and_hardened" {
 
   assert {
     condition = (
-      length(google_compute_instance.primary.service_account) == 0 &&
+      google_compute_instance.primary.service_account[0].email == "team5-primary@test-project.iam.gserviceaccount.com" &&
+      google_compute_instance.primary.service_account[0].scopes == toset(["https://www.googleapis.com/auth/logging.write"]) &&
       google_compute_instance.primary.metadata["enable-oslogin"] == "TRUE" &&
       google_compute_instance.primary.metadata["block-project-ssh-keys"] == "true" &&
       startswith(google_compute_instance.primary.metadata["startup-script"], "#!/bin/bash\n")
     )
-    error_message = "Primary must have no service account, OS Login only and a startup script with a valid shebang."
+    error_message = "Primary must run as team5-primary with only the logging.write scope, OS Login only and a startup script with a valid shebang."
   }
 
   # Both disks run a signed kernel (#63, #79), so primary follows the jumphost's setting.

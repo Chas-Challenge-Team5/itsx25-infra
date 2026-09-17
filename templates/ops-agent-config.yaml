@@ -1,0 +1,17 @@
+# Team 5 (#92). Skickar bara systemjournalen, där sshd, sudo, headscale och
+# tailscaled redan finns. rsyslog-filerna läses inte, så inget skickas två gånger.
+logging:
+  receivers:
+    journald:
+      type: systemd_journald
+  service:
+    pipelines:
+      default_pipeline:
+        receivers: [journald]
+
+# Inga mätvärden. Kontona har bara logging.logWriter.
+metrics:
+  service:
+    pipelines:
+      default_pipeline:
+        receivers: []

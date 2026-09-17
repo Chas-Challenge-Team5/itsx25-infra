@@ -1,0 +1,48 @@
+#!/bin/bash
+# Ops Agent som skickar systemjournalen till Cloud Logging (#92).
+# Sökvägarna och kommandona kan bytas i testerna. På VM:arna används standardvärdena.
+set -euo pipefail
+
+etc="$${TEAM_ETC:-/etc}"
+apt_get="$${TEAM_APT_GET:-apt-get}"
+dpkg_query="$${TEAM_DPKG_QUERY:-dpkg-query}"
+systemctl="$${TEAM_SYSTEMCTL:-systemctl}"
+
+# Samma nyckel som labbimagens övriga Google-källor använder.
+if [[ ! -s "$etc/apt/keyrings/google-keyring.gpg" ]]; then
+    echo 'Google APT key missing; Ops Agent not installed.' >&2
+    exit 1
+fi
+codename=$(. "$etc/os-release" && echo "$${VERSION_CODENAME:-}")
+if [[ ! "$codename" =~ ^[a-z]+$ ]]; then
+    echo "Unexpected Debian codename '$codename'; Ops Agent not installed." >&2
+    exit 1
+fi
+
+# Konfigurationen skrivs före installationen, så att agenten aldrig startar
+# med standardinställningen som också skickar mätvärden.
+config_dir="$etc/google-cloud-ops-agent"
+install -d -m 0755 "$config_dir" "$etc/apt/sources.list.d"
+echo '${config}' | base64 --decode > "$config_dir/config.yaml.new"
+changed=1
+if [[ -f "$config_dir/config.yaml" ]] && cmp -s "$config_dir/config.yaml.new" "$config_dir/config.yaml"; then
+    changed=0
+fi
+mv -f "$config_dir/config.yaml.new" "$config_dir/config.yaml"
+chmod 0644 "$config_dir/config.yaml"
+
+echo "deb [signed-by=/etc/apt/keyrings/google-keyring.gpg] https://packages.cloud.google.com/apt google-cloud-ops-agent-$codename-all main" \
+    > "$etc/apt/sources.list.d/google-cloud-ops-agent.list"
+
+if ! "$dpkg_query" -W -f='$${Status}' google-cloud-ops-agent 2>/dev/null | grep -q 'install ok installed'; then
+    "$apt_get" update
+    # confold behåller vår config.yaml om paketet har en egen.
+    DEBIAN_FRONTEND=noninteractive "$apt_get" install -y --no-install-recommends \
+        -o Dpkg::Options::=--force-confold google-cloud-ops-agent
+    changed=1
+fi
+
+"$systemctl" enable google-cloud-ops-agent.service
+if [[ "$changed" == 1 ]]; then
+    "$systemctl" restart google-cloud-ops-agent.service
+fi

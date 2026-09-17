@@ -1,5 +1,5 @@
 variable "headscale_proxy_cidr" {
-  description = "Single IPv4 address of the instructor's Headscale reverse proxy, expressed as a /32 CIDR."
+  description = "Single IPv4 address of Spectre, the instructor's Headscale reverse proxy, expressed as a /32 CIDR. Also the destination of the tailnet route and masquerade rule (#51)."
   type        = string
   default     = "10.0.0.2/32"
 

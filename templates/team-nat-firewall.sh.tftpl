@@ -34,5 +34,11 @@ if [[ "$${1:-}" == '--enable-forwarding' ]]; then
     fi
     iptables -w 10 -t nat -C POSTROUTING -o "$interface" -s '${subnet_cidr}' -j MASQUERADE 2>/dev/null || \
         iptables -w 10 -t nat -A POSTROUTING -o "$interface" -s '${subnet_cidr}' -j MASQUERADE
+    # Spectre har ingen returväg till tailnätet, så bara den trafiken maskeras (#51).
+    # Primary behåller klientens tailnet-adress.
+    iptables -w 10 -t nat -C POSTROUTING -o "$interface" -s '${tailnet_cidr}' -d '${spectre_cidr}' -j MASQUERADE 2>/dev/null || \
+        iptables -w 10 -t nat -A POSTROUTING -o "$interface" -s '${tailnet_cidr}' -d '${spectre_cidr}' -j MASQUERADE
+    # Ta bort den bredare regeln som lades in för hand under #51.
+    while iptables -w 10 -t nat -D POSTROUTING -d '${spectre_cidr}' -j MASQUERADE 2>/dev/null; do :; done
     sysctl -w net.ipv4.ip_forward=1
 fi

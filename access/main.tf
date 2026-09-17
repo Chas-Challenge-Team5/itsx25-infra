@@ -4,7 +4,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 7.0"
+      version = "~> 8.2"
     }
   }
 
@@ -47,6 +47,16 @@ resource "google_service_account_iam_member" "jumphost_service_account_users" {
   for_each = var.os_admin_users
 
   service_account_id = "projects/itsx25-lab/serviceAccounts/team5-jumphost@itsx25-lab.iam.gserviceaccount.com"
+  role               = "roles/iam.serviceAccountUser"
+  member             = each.value
+}
+
+# Primary får kontot team5-primary för loggarna (#92). Tilldelningen måste vara
+# applicerad innan kontot kopplas till VM:n, annars fungerar inte OS Login där.
+resource "google_service_account_iam_member" "primary_service_account_users" {
+  for_each = var.os_admin_users
+
+  service_account_id = "projects/itsx25-lab/serviceAccounts/team5-primary@itsx25-lab.iam.gserviceaccount.com"
   role               = "roles/iam.serviceAccountUser"
   member             = each.value
 }
