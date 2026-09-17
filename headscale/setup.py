@@ -200,6 +200,11 @@ def wait_until_ready():
     raise ValueError("Headscale did not become ready; inspect systemctl and journalctl.")
 
 
+def candidate_path(target):
+    # Headscale picks the parser from the file extension, so keep it last.
+    return target.with_name(f".{target.stem}.new{target.suffix}")
+
+
 def reconfigure(source, target=Path("/etc/headscale/config.yaml")):
     import fcntl
 
@@ -219,7 +224,7 @@ def reconfigure(source, target=Path("/etc/headscale/config.yaml")):
             raise ValueError("Only the Split DNS resolver may change; review other differences separately.")
         stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
         backup = target.with_name(f"{target.name}.{stamp}.bak")
-        candidate = target.with_name(f".{target.name}.new")
+        candidate = candidate_path(target)
         shutil.copy2(target, backup)
         candidate.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
         shutil.chown(candidate, user="root", group="headscale")
