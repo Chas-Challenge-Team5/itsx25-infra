@@ -11,7 +11,7 @@
 | Trafik genom NAT | Teamets subnät | TCP 80/443 |
 | Vidarebefordran via `tailscale0` | Tailscale-gränssnittet, in eller ut | Lämnas vidare till Tailscales egna regler och åtkomstpolicy |
 
-Internregeln behåller SSH till både `jumphost` och `primary`. En separat regel tillåter TCP 8000 och ICMP enbart till `primary`, för #50. Källorna täcker både Tailscales standard-SNAT (jumphostens interna IP) och `--snat-subnet-routes=false` (klientens Tailscale-IP). Den befintliga returvägen `tailnet_via_jumphost` behålls. Regeln startar ingen primary-maskin; det görs i #50. Den breda UDP-öppningen tas bort, och andra portar tillåts inte generellt. Direkt SSH från internet återinförs inte; IAP och instruktörens separata SSH-regler behålls. OS Login och IAM ändras inte av #31.
+Internregeln behåller SSH till både `jumphost` och `primary`. En separat regel tillåter TCP 8000 och ICMP enbart till `primary`, för #50. Källorna täcker både Tailscales standard-SNAT (jumphostens interna IP) och `--snat-subnet-routes=false` (klientens Tailscale-IP). Den befintliga returvägen `tailnet_via_jumphost` behålls. Primary är startad (#78) och dessa regler tillämpas på den körande instansen. Den breda UDP-öppningen tas bort, och andra portar tillåts inte generellt. Direkt SSH från internet återinförs inte; IAP och instruktörens separata SSH-regler behålls. OS Login och IAM ändras inte av #31.
 
 GCP:s NAT-ingressregel kan även släppa fram trafik till jumphostens egna 80/443. Därför krävs värdfiltret i `templates/team-nat-firewall.sh.tftpl` innan de nya GCP-reglerna införs:
 
@@ -44,7 +44,7 @@ Testerna körs också i PR-jobbet utan GCP-autentisering. Återskapande av regle
 
 ## Funktionstest i GCP
 
-Den 15 september 2026 verifierades den tidigare versionen före PR-granskningens komplettering för primary/Tailscale i en separat VPC med en testjumphost, en intern klient utan extern IP och en simulerad instruktörsproxy. Testet använde dåvarande branchens brandväggsblock, startup-script och filtertemplate, med separata resursnamn och separat state. De nya primary-reglerna och samspelet med verklig tailscaled har ännu inte testats i GCP.
+Den 15 september 2026 verifierades den tidigare versionen före PR-granskningens komplettering för primary/Tailscale i en separat VPC med en testjumphost, en intern klient utan extern IP och en simulerad instruktörsproxy. Testet använde dåvarande branchens brandväggsblock, startup-script och filtertemplate, med separata resursnamn och separat state. Primary-reglerna har sedan testats mot den skarpa miljön i samband med #50. Samspelet med verklig tailscaled, Split DNS och Spectre-åtkomst verifieras vidare i #51/#52, som fortfarande pågår.
 
 SSH/sudo via IAP och från instruktörsnätet fungerade. Klientens HTTP/HTTPS gick genom NAT med verifierad källadressöversättning och giltig TLS-kontroll. Anslutningar till jumphostens egna 80/443 samt otillåtna TCP/UDP-portar blockerades mot kända lyssnande tjänster. TCP 8080 fungerade från proxyadressen men blockerades från klienten. SOCKS över IAP fungerade också.
 

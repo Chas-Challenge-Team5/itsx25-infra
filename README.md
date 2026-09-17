@@ -18,6 +18,18 @@ Jumphosten `team5-jumphost` har privat IP `10.0.5.2`, extern IP och IP-forwardin
 
 Den interna instansen `team5-primary` har privat IP `10.0.5.3` och ingen extern IP. Den nås via jumphosten eller via tailnätets subnet route, och går ut mot internet genom jumphostens NAT. Routes för interna maskiner använder jumphosten som nästa hopp.
 
+## Tailnätet
+
+Headscale körs på jumphosten (`team5-jumphost`) och exponeras på `https://team5.itsx25.chas-lab.dev`. MagicDNS-domänen är `team5.arpa`. Registrerade användare motsvarar teamets medlemmar (Mattej, Viktor, Abdi, Adam, Armin).
+
+Jumphosten annonserar subnätet `10.0.5.0/24` som en Tailscale-rutt, tillsammans med värdrutten till Spectre (`10.0.0.2/32`) när den läggs till (#51) — båda måste annonseras i samma `tailscale set`-anrop, annars skriver den senare över den tidigare. Anslutna klienter använder `--accept-routes` för att ta emot annonserade rutter från jumphosten, och rutterna måste godkännas separat på Headscale-servern innan de blir aktiva.
+
+SNAT för vidarebefordrad tailnet-trafik är avstängt (`--snat-subnet-routes=false`), så interna tjänster ser klientens faktiska Tailscale-IP i stället för jumphostens.
+
+`team5-primary` nås antingen via jumphosten (`ssh -J`) eller direkt över tailnätets subnet-rutt, när en klient anslutit till Headscale och fått rutten godkänd.
+
+> **Ofärdigt:** Split DNS för zonen `itsx25.chas-lab.dev` och dnsmasq som DNS-proxy mot GCP:s interna DNS är under arbete (#51). Detta avsnitt kompletteras när #51 och #52 är klara.
+
 ## Nätverkskarta
 
 Kartan visar konfigurationen i Terraform. Den är inte en liveinventering av miljön.
@@ -38,8 +50,8 @@ Google IAP
 |  +-----------------------------+     Instruktörsnät              |
 |  | team5-vpc                   |     10.0.0.0/24                 |
 |  | Subnät: 10.0.5.0/24         |           |                     |
-|  |                             |           | TCP/UDP alla portar |
-|  |  +----------------------+   |           | samt ICMP           |
+|  |                             |           | TCP/22 (SSH)        |
+|  |  +----------------------+   |           |                     |
 |  |  | team5-jumphost       |<--------------+                     |
 |  |  | 10.0.5.2             |   |                                 |
 |  |  | SSH, forwarding, NAT |   |                                 |
@@ -58,7 +70,7 @@ Google IAP
 +------------------------------------------------------------------+
 ```
 
-Den interna brandväggsregeln tillåter TCP/UDP på alla portar samt ICMP från teamets och instruktörens subnät till taggarna `jumphost` och `primary`. Pilen från instruktörsnätet visar tillåten trafik; nätkopplingen till instruktörens VPC förvaltas inte i denna Terraform-konfiguration.
+Den interna brandväggsregeln (`team5-allow-internal`) tillåter endast TCP/22 (SSH) från teamets och instruktörens subnät till taggen `jumphost`. En separat regel (`team5-allow-primary-services`) tillåter TCP/8000 och ICMP från teamets subnät och tailnätet till taggen `primary`. En tredje regel (`team5-allow-forwarded-nat`) tillåter TCP/80 och TCP/443 från teamets subnät, vidarebefordrat genom jumphosten mot internet. En fjärde regel (`team5-allow-headscale-proxy`) tillåter TCP/8080 från instruktörens proxy till jumphosten. Pilen från instruktörsnätet visar tillåten trafik; nätkopplingen till instruktörens VPC förvaltas inte i denna Terraform-konfiguration.
 
 Routes för `0.0.0.0/0` och `100.64.0.0/10` pekar på jumphosten för maskiner med taggen `no-external-ip`. Tailnet-routen finns i koden, men visar inte i sig att ett fungerande tailnät är etablerat.
 
@@ -73,8 +85,11 @@ Routes för `0.0.0.0/0` och `100.64.0.0/10` pekar på jumphosten för maskiner m
 | `outputs.tf` | Utdata från rotmodulen |
 | `backend.tf` | Rotmodulens GCS-backend |
 | `bootstrap/` | CI-servicekonto, IAM, WIF och state-bucket |
-| `access/` | OS Login/sudo på jumphosten, åtkomst till dess tjänstekonto och mockade tester |
+| `access/` | OS Login/sudo på jumphosten och primary, åtkomst till jumphostens tjänstekonto och mockade tester |
 | `iap-access/` | Teamets villkorade IAP-behörigheter och mockade tester |
+| `headscale/` | Headscale-serverkonfiguration och `setup.py` (#77) |
+| `templates/` | `team-nat-firewall.sh.tftpl`, renderas in i jumphostens startup-script |
+| `.tflint.hcl` | TFLint-konfiguration (google-pluginet) för respektive Terraform-rot |
 | `scripts/` | Kontroll av deploygodkännande och manuell förberedelse för Secure Boot |
 | `tests/` | Tester för WIF, CI:s objektåtkomst och kontrollen av deploygodkännande |
 | `.github/workflows/` | PR-kontroller och deploy |
@@ -98,17 +113,17 @@ Bootstrap-konfigurationen begränsar CI-kontots objektåtkomst till `terraform/s
 
 Backend-konfigurationen förutsätter att state-bucketen redan finns. En helt ny miljö kräver därför separat etablering av backend.
 
-IAP-tilldelningarna gäller jumphostens privata IP och TCP/22. De ger tunnelåtkomst. OS Login hanterar SSH-inloggningen genom användarens Google-konto och publika SSH-nyckel i OS Login-profilen. `access/` tilldelar de fem användarna OS Admin Login på jumphosten, vilket ger sudo där. Jumphosten har ett särskilt tjänstekonto kopplat till sig; `access/` tilldelar även den Service Account User-behörighet som användarna behöver för att logga in på en VM med tjänstekonto.
+IAP-tilldelningarna gäller jumphostens privata IP och TCP/22. De ger tunnelåtkomst. OS Login hanterar SSH-inloggningen genom användarens Google-konto och publika SSH-nyckel i OS Login-profilen. `access/` tilldelar de fem användarna OS Admin Login på jumphosten och på primary, vilket ger sudo där. Jumphosten har ett särskilt tjänstekonto kopplat till sig; `access/` tilldelar även den Service Account User-behörighet som användarna behöver för att logga in på en VM med tjänstekonto.
 
 Verifiera IAM-tilldelningarna och användarnas OS Login-profiler innan OS Login aktiveras. Kontrollera instansens IAM vid VM-ersättning och IAP-tilldelningarna vid byte eller återanvändning av IP-adress. Införande och återställning beskrivs i [OS Login-underlaget](docs/os-login.md).
 
-Secure Boot är avstängt som standard. Det kräver separat förberedelse av en signerad kärna och verifierad uppstart innan Terraform-inställningen aktiveras. Scriptet i `scripts/prepare-secure-boot.sh` körs manuellt; en deploy installerar ingen kärna. Den nuvarande grundimagen måste också förberedas vid återskapande.
+Secure Boot är aktiverat för både jumphost och primary sedan kärnbytet är verifierat (#76, #81). Aktiveringen krävde separat förberedelse av en signerad kärna och verifierad uppstart innan Terraform-inställningen sattes. Scriptet i `scripts/prepare-secure-boot.sh` användes för detta engångsbyte; en ny grundimage vid återskapande av en instans måste fortfarande förberedas på samma sätt innan Secure Boot kan förbli aktiverat.
 
 ## CI/CD
 
 GitHub Actions autentiserar mot GCP genom Workload Identity Federation. Repo-variablerna `WORKLOAD_IDENTITY_PROVIDER` och `CICD_SERVICE_ACCOUNT` anger provider och servicekonto. Värdena hämtas från bootstrap-modulens utdata.
 
-Alla PR:er mot main, även Dependabots, kör formatkontroll, validering och tester utan GCP-autentisering eller backendåtkomst. Kontrollerna omfattar de fyra Terraform-rötterna, mockade åtkomsttester, tester av WIF- och lagringsvillkor, godkännandeskydd samt syntaxkontroll av Secure Boot-scriptet. PR-jobbet kör ingen plan mot miljön.
+Alla PR:er mot main, även Dependabots, kör formatkontroll, validering och tester utan GCP-autentisering eller backendåtkomst. Kontrollerna omfattar de fyra Terraform-rötterna, mockade åtkomsttester, tester av WIF- och lagringsvillkor, godkännandeskydd, syntaxkontroll av Secure Boot-scriptet samt TFLint (med google-pluginet) och Checkov för samtliga rötter (#82). PR-jobbet kör ingen plan mot miljön.
 
 Vid push till main skapar deploy-workflowen en plan i den privata state-bucketen, under `terraform/deploy-plans/`. Körningens sammanfattning visar commit, planens adress och SHA-256. En annan granskare granskar planen och godkänner `terraform-apply` innan samma sparade plan appliceras. Planens SHA-256 kontrolleras före apply och planobjektet tas bort efter lyckad apply. Planfiler publiceras inte som GitHub-artifacts.
 
@@ -130,4 +145,4 @@ Säkerhetsfynd, åtgärder och verifieringsresultat finns samlade bland [säkerh
 
 Mattej (Product Owner), Viktor (Scrum Master), Abdi, Adam och Armin.
 
-*Senast uppdaterad: 15 september 2026.*
+*Senast uppdaterad: 17 september 2026.*
