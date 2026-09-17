@@ -62,13 +62,19 @@ sudo mount -o ro,noload /dev/disk/by-id/google-restore-test-part1 /mnt/restore-t
 sudo ls -l /mnt/restore-test/var/lib/headscale
 # Ingen utskrift betyder att nyckeln är samma som den som används nu.
 sudo cmp /mnt/restore-test/var/lib/headscale/noise_private.key /var/lib/headscale/noise_private.key
-sudo python3 -c "import sqlite3; db = sqlite3.connect('file:/mnt/restore-test/var/lib/headscale/db.sqlite?immutable=1', uri=True); print(*db.execute('select id, given_name from nodes'), sep='\n')"
+# Kopiera databasen med WAL-filen. En manuell snapshot tas medan Headscale kör,
+# och då ligger de senaste ändringarna i db.sqlite-wal. Globben måste expanderas
+# av root, eftersom katalogen inte är läsbar för andra.
+TMP=$(sudo mktemp -d)
+sudo sh -c "cp -a /mnt/restore-test/var/lib/headscale/db.sqlite* $TMP/"
+sudo python3 -c "import sqlite3; db = sqlite3.connect('$TMP/db.sqlite'); print(*db.execute('select id, given_name from nodes order by id'), sep='\n'); print('integrity', db.execute('pragma integrity_check').fetchone()[0])"
+sudo rm -rf "$TMP"
 sudo headscale nodes list
 sudo umount /mnt/restore-test
 ```
 
 Noderna i snapshoten ska stämma med `headscale nodes list`, förutom noder som
-registrerats efter att snapshoten togs. Städa sedan bort disken:
+registrerats efter att snapshoten togs, och `integrity` ska vara `ok`. Städa sedan bort disken:
 
 ```bash
 gcloud compute instances detach-disk team5-jumphost --zone europe-north2-b --disk team5-jumphost-restore-test
