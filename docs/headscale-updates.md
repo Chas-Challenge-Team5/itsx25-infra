@@ -5,6 +5,9 @@ Tailscales stabila APT-källa. Headscale uppgraderas manuellt efter granskning,
 med en färsk backup och plan för återställning. Detta gäller jumphosten;
 teamets arbetsstationer omfattas inte av konfigurationsfilen.
 
+Headscale är installerat från en fristående `.deb` och saknar paketkälla.
+Blacklisten är ett extra skydd om en sådan källa skulle läggas till senare.
+
 Konfigurationen i `config/apt/52team5-tailscale-updates` införs separat enligt
 nedan. Merge och Terraform-deploy aktiverar den inte. Den måste också införas
 på nytt efter en VM-ersättning, tillsammans med återställningen av Headscale.
@@ -35,8 +38,9 @@ sårbarheter.
 1. [#85](https://github.com/Chas-Challenge-Team5/itsx25-infra/issues/85) ska vara
    införd och verifierad: raderingsskydd, minst en aktuell snapshot och ett
    dokumenterat återställningsprov. En merge av backupkoden räcker inte.
-2. Använd SSH via IAP med fungerande sudo och samordna med teamet. En
-   Tailscale-uppdatering kan starta om `tailscaled` och kort avbryta routing/DNS.
+2. SSH fungerar även via tailnätet. Använd IAP med fungerande sudo vid detta
+   införande, så att åtkomsten inte beror på Tailscale, och samordna med teamet.
+   En Tailscale-uppdatering kan starta om `tailscaled` och kort avbryta routing/DNS.
 3. Kontrollera paketkälla, timer, undantag och nuläge på `team5-jumphost`:
 
    ```bash
@@ -67,24 +71,37 @@ sårbarheter.
 
 ## Aktivera Tailscale-uppdatering efter godkänd backup
 
-Kopiera den granskade konfigurationsfilen från main till jumphosten. Följande
-kommandon körs där, från repokopian. Filen lägger till Tailscale utan att rensa
-Debians befintliga origins och undantar Headscale från automatisk uppgradering.
-Den ändrar inte APT:s schema eller inställningen för automatisk VM-omstart.
+Efter merge: kör följande **på den egna datorn**, från en uppdaterad lokal
+repokopia av main. Kopiera endast konfigurationsfilen till hemkatalogen på
+jumphosten och öppna sedan SSH via IAP; någon repokopia på jumphosten behövs inte.
 
 ```bash
-set -e
-# Kontrollera att inget tidigare lokalt innehåll skrivs över.
-if sudo test -e /etc/apt/apt.conf.d/52team5-tailscale-updates; then
-  sudo cmp /etc/apt/apt.conf.d/52team5-tailscale-updates config/apt/52team5-tailscale-updates
-fi
-# Vid skillnad avbryts blocket: granska filen separat innan ett nytt försök.
+gcloud compute scp config/apt/52team5-tailscale-updates team5-jumphost:52team5-tailscale-updates --tunnel-through-iap --zone=europe-north2-b --project=itsx25-lab
+gcloud compute ssh team5-jumphost --tunnel-through-iap --zone=europe-north2-b --project=itsx25-lab
+```
 
-# Endast unattended-upgrades ska installera Tailscale automatiskt.
-sudo tailscale set --auto-update=false
-sudo install -o root -g root -m 0644 config/apt/52team5-tailscale-updates /etc/apt/apt.conf.d/52team5-tailscale-updates
-sudo apt-get update
-sudo unattended-upgrade --dry-run --debug
+Följande block körs **i SSH-sessionen på jumphosten**. Underskalet avbryter vid
+fel utan att stänga den omgivande SSH-sessionen. Filen lägger till Tailscale utan
+att rensa Debians befintliga origins och undantar Headscale från automatisk
+uppgradering. Den ändrar inte APT:s schema eller inställningen för automatisk
+VM-omstart.
+
+```bash
+(
+  set -e
+  test -f "$HOME/52team5-tailscale-updates"
+  # Kontrollera att inget tidigare lokalt innehåll skrivs över.
+  if sudo test -e /etc/apt/apt.conf.d/52team5-tailscale-updates; then
+    sudo cmp /etc/apt/apt.conf.d/52team5-tailscale-updates "$HOME/52team5-tailscale-updates"
+  fi
+  # Vid skillnad avbryts blocket: granska filen separat innan ett nytt försök.
+
+  # Endast unattended-upgrades ska installera Tailscale automatiskt.
+  sudo tailscale set --auto-update=false
+  sudo install -o root -g root -m 0644 "$HOME/52team5-tailscale-updates" /etc/apt/apt.conf.d/52team5-tailscale-updates
+  sudo apt-get update
+  sudo unattended-upgrade --dry-run --debug
+)
 ```
 
 Installationen av filen gör paketkällan tillåten redan för nästa timerkörning.
