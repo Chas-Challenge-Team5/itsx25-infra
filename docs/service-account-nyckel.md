@@ -36,4 +36,13 @@ Gamla stateversioner lever kvar. Att redigera bort resursen räcker inte, återk
 
 Actions är pinnade på flyttbara taggar (#13). En kapad tagg kan läsa ut både token och nyckel mitt i en körning. Pinna på SHA.
 
-Bootstrap körs utanför CI med en människas inloggning (#9), och det saknas rader i bootstrap jämfört med `wif.patch` (#8).
+Bootstrap körs utanför CI med en människas inloggning (#9), och bootstrap-filen vi fick saknade tio rader jämfört med filen som WIF-patchen genererades från (#8).
+
+## läge nu
+
+Alla fyra punkter ovan är stängda.
+
+- #10: `roles/editor` är borttagen. CI-kontot har bara de Compute-roller deployen behöver.
+- #13: alla Actions är pinnade på SHA och rotmodulen har en lockfile.
+- #9: bootstrap valideras och planeras i PR-checkarna (#22). Apply körs fortfarande av en människa.
+- #8: WIF ligger direkt i `bootstrap/main.tf` (#15). Patchfilen är borttagen ur repot (#91).
