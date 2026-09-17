@@ -208,8 +208,9 @@ resource "google_compute_instance" "jumphost" {
   }
 }
 
-# Daglig snapshot av jumphostens disk med Headscale-datan (#85). 03:00 UTC ligger
-# inom daily_schedule-stoppet, så Headscale är nedstängd och databasen konsekvent.
+# Daglig snapshot av jumphostens disk med Headscale-datan (#85). GCP tar den inom
+# fyra timmar från starttiden. 01:00-05:00 UTC ligger inom daily_schedule-stoppet
+# både sommar- och vintertid, så Headscale är nedstängd och databasen konsekvent.
 # Snapshots behålls när disken raderas, annars försvinner backupen med den.
 resource "google_compute_resource_policy" "jumphost_snapshots" {
   name   = "team${var.team_id}-jumphost-snapshots"
@@ -219,7 +220,7 @@ resource "google_compute_resource_policy" "jumphost_snapshots" {
     schedule {
       daily_schedule {
         days_in_cycle = 1
-        start_time    = "03:00"
+        start_time    = "01:00"
       }
     }
 
@@ -243,6 +244,12 @@ resource "google_compute_disk_resource_policy_attachment" "jumphost_snapshots" {
   name = google_compute_resource_policy.jumphost_snapshots.name
   disk = reverse(split("/", google_compute_instance.jumphost.boot_disk[0].source))[0]
   zone = google_compute_instance.jumphost.zone
+
+  # En policy som används går inte att radera. Kopplingen tas bort först när
+  # schemat ändras, eftersom policyn då ersätts under samma namn.
+  lifecycle {
+    replace_triggered_by = [google_compute_resource_policy.jumphost_snapshots]
+  }
 }
 
 resource "google_compute_instance" "primary" {
