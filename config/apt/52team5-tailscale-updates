@@ -1,0 +1,8 @@
+// Installed manually after #85 is verified; see docs/headscale-updates.md.
+// Append to Debian's existing origins. Do not use #clear here.
+Unattended-Upgrade::Origins-Pattern {
+    "origin=Tailscale,label=Tailscale,site=pkgs.tailscale.com,codename=${distro_codename},component=main";
+};
+
+// Headscale upgrades require a separate plan and a consistent backup.
+Unattended-Upgrade::Package-Blacklist { "^headscale$"; };
