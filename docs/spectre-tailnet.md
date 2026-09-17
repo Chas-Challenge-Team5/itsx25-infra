@@ -48,7 +48,8 @@ labbzonen till en jumphost som ännu inte svarar.
    sudo headscale nodes list-routes
    ```
 
-4. Slå på Split DNS. Kopiera `headscale/setup.py` från main till jumphosten och kör:
+4. Slå på Split DNS. Kopiera både `headscale/setup.py` och
+   `headscale/policy.hujson` från main till jumphosten och kör:
 
    ```bash
    python3 setup.py render \
@@ -87,6 +88,17 @@ curl -fsS https://team5.itsx25.chas-lab.dev/health
 
 När ACL-policyn införs måste den tillåta UDP och TCP 53 till `100.64.0.2` och
 trafiken till `10.0.0.2/32`, annars slutar Split DNS och Spectre att fungera.
+
+Policyn från repot ligger i `headscale/policy.hujson`. Den förs ut till jumphosten
+genom att kopiera filen, kontrollera den och sedan ladda om Headscale:
+
+```bash
+sudo cp /etc/headscale/policy.hujson /etc/headscale/policy.hujson.bak.$(date -u +%Y%m%dT%H%M%SZ)
+sudo cp headscale/policy.hujson /etc/headscale/policy.hujson
+sudo chown root:headscale /etc/headscale/policy.hujson
+sudo chmod 0640 /etc/headscale/policy.hujson
+sudo headscale policy check -f /etc/headscale/policy.hujson
+sudo systemctl reload headscale
 
 ## Återställning
 

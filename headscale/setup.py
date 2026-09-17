@@ -197,13 +197,14 @@ def install(source):
                     shutil.chown(target, user="root", group="headscale")
                     target.chmod(0o640)
                     run("install", "-d", "-m", "0750", "-o", "headscale", "-g", "headscale", "/var/lib/headscale")
+                    install_policy(config)
+                    validate_as_service_user(target)
                 except Exception:
                     run("systemctl", "disable", "--now", "headscale.service", check=False)
                     raise
                 finally:
                     run("systemctl", "unmask", "--runtime", "headscale.service")
 
-        install_policy(config)
         validate_as_service_user(target)
         run("systemctl", "enable", "--now", "headscale.service")
         wait_until_ready()
