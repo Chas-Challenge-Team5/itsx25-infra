@@ -110,6 +110,15 @@ resource "google_compute_instance" "jumphost" {
   allow_stopping_for_update = true
   can_ip_forward            = true
 
+  # Headscale-datan finns bara på den här disken (#85). prevent_destroy stoppar
+  # en ersättning redan i planen, deletion_protection stoppar en radering i GCP
+  # som görs utanför Terraform.
+  deletion_protection = true
+
+  lifecycle {
+    prevent_destroy = true
+  }
+
   tags = ["jumphost"]
 
   resource_policies = [google_compute_resource_policy.daily_schedule.id]
@@ -197,6 +206,43 @@ resource "google_compute_instance" "jumphost" {
     enable_vtpm                 = true
     enable_integrity_monitoring = true
   }
+}
+
+# Daglig snapshot av jumphostens disk med Headscale-datan (#85). 03:00 UTC ligger
+# inom daily_schedule-stoppet, så Headscale är nedstängd och databasen konsekvent.
+# Snapshots behålls när disken raderas, annars försvinner backupen med den.
+resource "google_compute_resource_policy" "jumphost_snapshots" {
+  name   = "team${var.team_id}-jumphost-snapshots"
+  region = var.region
+
+  snapshot_schedule_policy {
+    schedule {
+      daily_schedule {
+        days_in_cycle = 1
+        start_time    = "03:00"
+      }
+    }
+
+    retention_policy {
+      max_retention_days    = 7
+      on_source_disk_delete = "KEEP_AUTO_SNAPSHOTS"
+    }
+
+    snapshot_properties {
+      storage_locations = ["eu"]
+      labels = {
+        team    = "team${var.team_id}"
+        purpose = "headscale-backup"
+      }
+    }
+  }
+}
+
+# Disknamnet tas från instansens källa, så att en ny disk får schemat igen.
+resource "google_compute_disk_resource_policy_attachment" "jumphost_snapshots" {
+  name = google_compute_resource_policy.jumphost_snapshots.name
+  disk = reverse(split("/", google_compute_instance.jumphost.boot_disk[0].source))[0]
+  zone = google_compute_instance.jumphost.zone
 }
 
 resource "google_compute_instance" "primary" {
