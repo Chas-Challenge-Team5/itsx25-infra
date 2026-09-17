@@ -82,10 +82,10 @@ ping team5-jumphost.team5.arpa
 curl -fsS https://team5.itsx25.chas-lab.dev/health
 ```
 
-* `spectre.itsx25.chas-lab.dev` ska ge `10.0.0.2`.
-* `nslookup example.com 100.64.0.2` ska avvisas (`REFUSED`), eftersom jumphosten
+- `spectre.itsx25.chas-lab.dev` ska ge `10.0.0.2`.
+- `nslookup example.com 100.64.0.2` ska avvisas (`REFUSED`), eftersom jumphosten
   bara svarar för labbzonen.
-* MagicDNS och Headscales HTTPS-adress ska fortsätta fungera.
+- MagicDNS och Headscales HTTPS-adress ska fortsätta fungera.
 
 ## Åtkomstpolicy (#52)
 

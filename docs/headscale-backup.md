@@ -90,20 +90,20 @@ sedan in från snapshoten, så att instansen fortfarande hanteras av Terraform.
    innan Secure Boot slås på, eftersom labbimagen har en osignerad kärna (#63).
 2. Skapa, koppla in och montera en disk från den senaste snapshoten precis som
    i provåterställningen.
-3. Install Tailscale and Headscale with the saved configuration. Both files
-   must be present next to each other on the jumphost:
+3. Installera Tailscale och Headscale med den sparade konfigurationen. `setup.py`
+   och `policy.hujson` måste ligga bredvid varandra på jumphosten:
 
+   ```bash
    sudo cp headscale/setup.py /root/setup.py
    sudo cp headscale/policy.hujson /root/policy.hujson
    sudo cp /mnt/restore-test/etc/headscale/config.yaml /root/headscale-config.yaml
    sudo python3 /root/setup.py install --config /root/headscale-config.yaml
+   ```
 
-   setup.py also installs policy.hujson to
-   /etc/headscale/policy.hujson. It refuses to install if an existing policy
-   differs from the repository version.
-
-   setup.py refuses to install when /var/lib/headscale already contains
-   data, so the data is copied in only after the installation.
+   `setup.py` installerar också policyn till `/etc/headscale/policy.hujson` och
+   vägrar om en befintlig policy skiljer sig från repots version. Den vägrar också
+   installera när `/var/lib/headscale` redan har innehåll, så datan kopieras in
+   först efter installationen.
 4. Stoppa tjänsterna, ersätt datan och starta igen:
 
    ```bash
