@@ -12,6 +12,7 @@ SPEC = importlib.util.spec_from_file_location("headscale_setup", Path(__file__).
 SETUP = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(SETUP)
 RESOLVER = "100.64.0.2"
+POLICY_SOURCE = Path(__file__).resolve().parents[1] / "policy.hujson"
 
 
 class ConfigurationTests(unittest.TestCase):
@@ -35,6 +36,16 @@ class ConfigurationTests(unittest.TestCase):
         self.assertFalse(config["grpc_allow_insecure"])
         self.assertFalse(config["dns"]["override_local_dns"])
         self.assertEqual(config["trusted_proxies"], ["10.0.0.2/32"])
+
+    def test_policy_uses_file_mode(self):
+        config = SETUP.configuration("https://hs.example.com", "tail.example.com", RESOLVER)
+        self.assertEqual(
+            config["policy"],
+            {
+                "mode": "file",
+                "path": "/etc/headscale/policy.hujson",
+            },
+        )
 
     def test_split_dns_sends_only_the_lab_zone_to_the_jumphost(self):
         config = SETUP.configuration("https://hs.example.com", "tail.example.com", RESOLVER)
@@ -68,6 +79,23 @@ class ConfigurationTests(unittest.TestCase):
         missing["dns"]["nameservers"]["split"] = {}
         with self.assertRaises(KeyError):
             SETUP.expected_configuration(missing)
+
+    def test_install_policy_copies_repo_policy_and_refuses_changes(self):
+        config = SETUP.configuration("https://hs.example.com", "tail.example.com", RESOLVER)
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.hujson"
+            target = Path(directory) / "policy.hujson"
+            source.write_bytes(POLICY_SOURCE.read_bytes())
+            config["policy"]["path"] = str(target)
+            with patch.object(SETUP, "POLICY_SOURCE", source), \
+                    patch.object(SETUP.shutil, "chown"):
+                SETUP.install_policy(config)
+                self.assertEqual(target.read_bytes(), source.read_bytes())
+                self.assertEqual(target.stat().st_mode & 0o777, 0o640)
+                target.write_text("// changed\n", encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    SETUP.install_policy(config)
+                self.assertEqual(target.read_text(encoding="utf-8"), "// changed\n")
 
     def test_only_split_dns_may_differ_on_reconfigure(self):
         before = SETUP.configuration("https://hs.example.com", "tail.example.com", RESOLVER)
@@ -151,10 +179,14 @@ class BinaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="headscale-owner-test-") as directory:
             root = Path(directory)
             root.chmod(0o755)
+            policy = root / "policy.hujson"
+            policy.write_bytes(POLICY_SOURCE.read_bytes())
+            policy.chmod(0o644)
             data = root / "data"
             data.mkdir(mode=0o750)
             os.chown(data, account.pw_uid, account.pw_gid)
             config = SETUP.configuration("https://hs.example.invalid", "tail.example.invalid", RESOLVER)
+            config["policy"]["path"] = str(policy)
             config["noise"]["private_key_path"] = str(data / "noise.key")
             config["database"]["sqlite"]["path"] = str(data / "db.sqlite")
             config["unix_socket"] = str(data / "headscale.sock")
@@ -173,7 +205,11 @@ class BinaryTests(unittest.TestCase):
     def test_real_config_and_repeatable_user_creation(self):
         binary = os.environ["HEADSCALE_TEST_BINARY"]
         with tempfile.TemporaryDirectory(prefix="headscale-test-") as directory:
+            policy = Path(directory) / "policy.hujson"
+            policy.write_bytes(POLICY_SOURCE.read_bytes())
+            policy.chmod(0o644)
             config = SETUP.configuration("https://hs.example.invalid", "tail.example.invalid", RESOLVER)
+            config["policy"]["path"] = str(policy)
             config["noise"]["private_key_path"] = directory + "/noise.key"
             config["database"]["sqlite"]["path"] = directory + "/db.sqlite"
             config["unix_socket"] = directory + "/headscale.sock"

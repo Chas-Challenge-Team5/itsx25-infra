@@ -27,6 +27,7 @@ USERS = ("admin", "adam", "armin", "abdi", "mattej", "viktor")
 # The lab zone is resolved by dnsmasq on the jumphost (#51).
 SPLIT_DNS_ZONE = "itsx25.chas-lab.dev"
 TAILNET_V4 = ipaddress.ip_network("100.64.0.0/10")
+POLICY_SOURCE = Path(__file__).resolve().with_name("policy.hujson")
 
 
 def domain(value):
@@ -75,6 +76,10 @@ def configuration(server_url, base_domain, resolver):
         "database": {"type": "sqlite", "sqlite": {
             "path": "/var/lib/headscale/db.sqlite", "write_ahead_log": True,
         }},
+        "policy": {
+            "mode": "file",
+            "path": "/etc/headscale/policy.hujson",
+        },
         "dns": {"magic_dns": True, "base_domain": base_domain,
                 "override_local_dns": False, "nameservers": {"global": [], "split": {SPLIT_DNS_ZONE: [resolver]}}},
         "unix_socket": "/var/run/headscale/headscale.sock",
@@ -129,6 +134,22 @@ def validate_as_service_user(config, binary="/usr/bin/headscale", user="headscal
         os.umask(previous_umask)
 
 
+def install_policy(config):
+    source = POLICY_SOURCE
+    target = Path(config["policy"]["path"])
+    if not source.is_file():
+        raise ValueError(f"Policy file is missing from the repository: {source}")
+    policy = source.read_bytes()
+    if target.exists():
+        if target.read_bytes() != policy:
+            raise ValueError("Existing policy differs; back up and review changes separately.")
+    else:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(policy)
+    shutil.chown(target, user="root", group="headscale")
+    target.chmod(0o640)
+
+
 def install(source):
     import fcntl
 
@@ -176,6 +197,7 @@ def install(source):
                     shutil.chown(target, user="root", group="headscale")
                     target.chmod(0o640)
                     run("install", "-d", "-m", "0750", "-o", "headscale", "-g", "headscale", "/var/lib/headscale")
+                    install_policy(config)
                     validate_as_service_user(target)
                 except Exception:
                     run("systemctl", "disable", "--now", "headscale.service", check=False)

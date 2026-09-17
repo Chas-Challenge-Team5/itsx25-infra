@@ -1,0 +1,188 @@
+{
+  // =====================================================
+  // USERS / GROUPS
+  // =====================================================
+
+  "groups": {
+    "group:admins": [
+      "mattej@"
+    ],
+
+    "group:developers": [
+      "viktor@",
+      "armin@",
+      "abdi@",
+      "adam@"
+    ]
+
+    // Fictional company users can be added here when available.
+    // Example:
+    // "group:employees": [
+    //   "jon@",
+    //   "wilma@"
+    // ]
+  },
+
+  // =====================================================
+  // TAG OWNERS
+  // =====================================================
+
+  "tagOwners": {
+    "tag:jumphost": [
+      "admin@",
+      "group:admins"
+    ],
+
+    "tag:webserver": [
+      "group:admins"
+    ],
+
+    "tag:database": [
+      "group:admins"
+    ]
+  },
+
+  // =====================================================
+  // ACCESS CONTROL
+  // =====================================================
+
+  "acls": [
+
+    // ---------------------------------------------------
+    // LAB ENVIRONMENT
+    // ---------------------------------------------------
+
+    // Developers can use the Jumphost for DNS.
+    {
+      "action": "accept",
+      "src": [
+        "group:developers"
+      ],
+      "dst": [
+        "tag:jumphost:53"
+      ]
+    },
+
+    // Developers can SSH to the Jumphost.
+    // Admins already have full access through the *:* rule below.
+    {
+      "action": "accept",
+      "src": [
+        "group:developers"
+      ],
+      "dst": [
+        "tag:jumphost:22",
+        "10.0.5.2:22"
+      ]
+    },
+
+    // Developers can access Spectre over HTTPS.
+    {
+      "action": "accept",
+      "src": [
+        "group:developers"
+      ],
+      "dst": [
+        "10.0.0.2:443"
+      ]
+    },
+
+    // Developers can access Spectre's HTTP server.
+    {
+      "action": "accept",
+      "src": [
+        "group:developers"
+      ],
+      "dst": [
+        "10.0.0.2/32:8000"
+      ]
+    },
+
+    // Developers can SSH to Spectre.
+    {
+      "action": "accept",
+      "src": [
+        "group:developers"
+      ],
+      "dst": [
+        "10.0.0.2:22"
+      ]
+    },
+
+    // Developers can access port 8000 on the lab subnet.
+    {
+      "action": "accept",
+      "src": [
+        "group:developers"
+      ],
+      "dst": [
+        "10.0.5.0/24:8000"
+      ]
+    },
+
+    // Developers can use ICMP on the lab subnet.
+    {
+      "action": "accept",
+      "src": [
+        "group:developers"
+      ],
+      "proto": "icmp",
+      "dst": [
+        "10.0.5.0/24:*"
+      ]
+    },
+
+    // ---------------------------------------------------
+    // FICTIONAL COMPANY
+    // ---------------------------------------------------
+
+    // Developers can access company web servers
+    // over HTTP and HTTPS.
+    {
+      "action": "accept",
+      "src": [
+        "group:developers"
+      ],
+      "dst": [
+        "tag:webserver:80,443"
+      ]
+    },
+
+    // Fictional employees can access company web servers
+    // only over HTTPS.
+    // This rule can be enabled when real users are added
+    // to group:employees.
+    //
+    // {
+    //   "action": "accept",
+    //   "src": [
+    //     "group:employees"
+    //   ],
+    //   "dst": [
+    //     "tag:webserver:443"
+    //   ]
+    // },
+
+    // Web servers can access the database using PostgreSQL.
+    {
+      "action": "accept",
+      "src": [
+        "tag:webserver"
+      ],
+      "dst": [
+        "tag:database:5432"
+      ]
+    },
+
+    // Admins have full access to everything.
+    {
+      "action": "accept",
+      "src": [
+        "group:admins"
+      ],
+      "dst": [
+        "*:*"
+      ]
+    }
+  ]
+}
