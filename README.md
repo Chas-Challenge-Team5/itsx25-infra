@@ -1,7 +1,3 @@
-Ja — problemet är att jag lade Markdown-filen i ett skrivblock, vilket gör att GitHub inte får exakt den råa `.md`-strukturen vid kopiering.
-
- Här är den **råa Markdown-källan**. Kopiera allt från `# ITSX25` till slutet och klistra direkt in i `README.md`:
-
 ````
 # ITSX25 – Infrastruktur
 
