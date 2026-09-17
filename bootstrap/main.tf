@@ -132,6 +132,31 @@ resource "google_service_account_iam_member" "cicd_jumphost_user" {
   member             = "serviceAccount:${google_service_account.cicd.email}"
 }
 
+# Systemloggar från VM:arna till Cloud Logging (#92). Kontona får bara skriva
+# loggar. Primary hade inget konto tidigare och får ett eget för det här.
+resource "google_service_account" "primary" {
+  account_id   = "team${var.team_id}-primary"
+  display_name = "Team ${var.team_id} primary VM (endast loggskrivning)"
+}
+
+resource "google_project_iam_member" "vm_log_writers" {
+  for_each = {
+    jumphost = "serviceAccount:team${var.team_id}-jumphost@${var.project_id}.iam.gserviceaccount.com"
+    primary  = google_service_account.primary.member
+  }
+
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = each.value
+}
+
+# CI behöver actAs för att koppla kontot till primary, som för jumphosten.
+resource "google_service_account_iam_member" "cicd_primary_user" {
+  service_account_id = google_service_account.primary.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.cicd.email}"
+}
+
 data "google_iam_policy" "terraform_state" {
   binding {
     role = "roles/storage.objectAdmin"
