@@ -34,5 +34,10 @@ if [[ "$${1:-}" == '--enable-forwarding' ]]; then
     fi
     iptables -w 10 -t nat -C POSTROUTING -o "$interface" -s '${subnet_cidr}' -j MASQUERADE 2>/dev/null || \
         iptables -w 10 -t nat -A POSTROUTING -o "$interface" -s '${subnet_cidr}' -j MASQUERADE
+
+    # Masquerade-regel för trafik till Spectre (#51)
+    iptables -w 10 -t nat -C POSTROUTING -d 10.0.0.2/32 -j MASQUERADE 2>/dev/null || \
+        iptables -w 10 -t nat -A POSTROUTING -d 10.0.0.2/32 -j MASQUERADE
+
     sysctl -w net.ipv4.ip_forward=1
 fi

@@ -165,6 +165,12 @@ resource "google_compute_instance" "jumphost" {
       systemctl restart team-nat-firewall.service
 
       /usr/local/sbin/team-nat-firewall --enable-forwarding
+
+      # Annonsera både det egna subnätet och Spectre (#51)
+      if command -v tailscale &>/dev/null; then
+        tailscale set --advertise-routes=${local.subnet_cidr},10.0.0.2/32 || true
+      fi
+
       sysctl --system
     EOT
   }
