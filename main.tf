@@ -274,7 +274,7 @@ resource "google_compute_disk_resource_policy_attachment" "jumphost_snapshots" {
 resource "google_compute_instance" "primary" {
   # checkov:skip=CKV_GCP_38:CSEK skulle kräva manuell nyckel vid varje boot, inte lämpligt för labbmiljön
   name         = "team${var.team_id}-primary"
-  machine_type = "e2-micro"
+  machine_type = "e2-small" # k3s behöver mer än 1 GB minne (#108)
   zone         = local.primary_zone
 
   allow_stopping_for_update = true
@@ -359,13 +359,14 @@ resource "google_compute_firewall" "allow_internal" {
 }
 
 # Workshop #50: support both subnet SNAT and preserved tailnet source addresses.
+# 80 är appen och 6443 k3s API för CI-runnern (#108). Headscale-policyn avgör vem som når vilken port.
 resource "google_compute_firewall" "allow_primary_services" {
   name    = "team${var.team_id}-allow-primary-services"
   network = data.google_compute_network.team_vpc.name
 
   allow {
     protocol = "tcp"
-    ports    = ["8000"]
+    ports    = ["80", "6443", "8000"]
   }
 
   allow {

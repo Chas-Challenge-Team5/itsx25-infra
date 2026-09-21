@@ -28,13 +28,13 @@ run "primary_is_internal_and_hardened" {
   assert {
     condition = (
       google_compute_instance.primary.name == "team5-primary" &&
-      google_compute_instance.primary.machine_type == "e2-micro" &&
+      google_compute_instance.primary.machine_type == "e2-small" &&
       google_compute_instance.primary.zone == "europe-north2-b" &&
       google_compute_instance.primary.network_interface[0].network_ip == "10.0.5.3" &&
       length(google_compute_instance.primary.network_interface[0].access_config) == 0 &&
       toset(google_compute_instance.primary.tags) == toset(["primary", "no-external-ip"])
     )
-    error_message = "Primary must be an e2-micro at 10.0.5.3 in the access module's zone, without external IP, routed via the jumphost."
+    error_message = "Primary must be an e2-small at 10.0.5.3 in the access module's zone, without external IP, routed via the jumphost."
   }
 
   assert {

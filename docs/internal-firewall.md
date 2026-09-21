@@ -5,7 +5,7 @@
 | Trafik | Källa | Tillåtelse |
 |---|---|---|
 | SSH till jumphost och primary | Teamets subnät och instruktörsnätet | TCP 22 |
-| Testtjänst och ping till primary | Teamets subnät samt `100.64.0.0/10` | TCP 8000 och ICMP |
+| Testtjänst, app, k3s API och ping till primary | Teamets subnät samt `100.64.0.0/10` | TCP 80, 6443, 8000 och ICMP |
 | SSH via IAP | `35.235.240.0/20` | TCP 22, befintlig separat regel |
 | Spectres proxy till Headscale | `headscale_proxy_cidr`, normalt `10.0.0.2/32` | TCP 8080 |
 | Trafik genom NAT | Teamets subnät | TCP 80/443 |
