@@ -39,6 +39,11 @@
 
     "tag:database": [
       "group:admins"
+    ],
+
+    // CI-runnern för appen får en tillfällig nyckel med den här taggen (#108).
+    "tag:github-runner": [
+      "github-ci@"
     ]
   },
 
@@ -129,6 +134,44 @@
       "proto": "icmp",
       "dst": [
         "10.0.5.0/24:*"
+      ]
+    },
+
+    // Developers can reach the company website on primary (Workshop 3).
+    {
+      "action": "accept",
+      "src": [
+        "group:developers"
+      ],
+      "dst": [
+        "10.0.5.3:80"
+      ]
+    },
+
+    // ---------------------------------------------------
+    // CI/CD
+    // ---------------------------------------------------
+
+    // The GitHub runner deploys through the k3s API on primary.
+    {
+      "action": "accept",
+      "src": [
+        "tag:github-runner"
+      ],
+      "dst": [
+        "10.0.5.3:6443"
+      ]
+    },
+
+    // The pipeline pings primary before it deploys.
+    {
+      "action": "accept",
+      "src": [
+        "tag:github-runner"
+      ],
+      "proto": "icmp",
+      "dst": [
+        "10.0.5.3:*"
       ]
     },
 

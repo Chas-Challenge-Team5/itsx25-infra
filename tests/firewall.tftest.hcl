@@ -40,14 +40,14 @@ run "internal_services_and_transit_are_separate" {
     condition = (
       length(google_compute_firewall.allow_primary_services.allow) == 2 &&
       alltrue([for rule in google_compute_firewall.allow_primary_services.allow :
-        (rule.protocol == "tcp" && toset(rule.ports) == toset(["8000"])) ||
+        (rule.protocol == "tcp" && toset(rule.ports) == toset(["80", "6443", "8000"])) ||
         (rule.protocol == "icmp" && try(length(rule.ports), 0) == 0)
       ]) &&
       google_compute_firewall.allow_primary_services.source_ranges == toset(["10.0.5.0/24", "100.64.0.0/10"]) &&
       google_compute_firewall.allow_primary_services.target_tags == toset(["primary"]) &&
       google_compute_route.tailnet_via_jumphost.dest_range == "100.64.0.0/10"
     )
-    error_message = "Primary must allow only TCP 8000 and ICMP from the subnet and tailnet, with a return route for non-SNAT traffic."
+    error_message = "Primary must allow only TCP 80, 6443, 8000 and ICMP from the subnet and tailnet, with a return route for non-SNAT traffic."
   }
 
   assert {
