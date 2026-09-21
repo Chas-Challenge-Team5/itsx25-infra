@@ -274,7 +274,7 @@ resource "google_compute_disk_resource_policy_attachment" "jumphost_snapshots" {
 resource "google_compute_instance" "primary" {
   # checkov:skip=CKV_GCP_38:CSEK skulle kräva manuell nyckel vid varje boot, inte lämpligt för labbmiljön
   name         = "team${var.team_id}-primary"
-  machine_type = "e2-micro"
+  machine_type = "e2-small" # k3s behöver mer än 1 GB minne (#108)
   zone         = local.primary_zone
 
   allow_stopping_for_update = true
