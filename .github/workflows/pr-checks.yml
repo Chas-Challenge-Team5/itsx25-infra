@@ -27,6 +27,12 @@ jobs:
       - name: Test Headscale configuration and user setup (isolated)
         run: sudo python3 headscale/check.py
 
+      - name: Render platform charts and validate image policy (no cluster access)
+        run: |
+          python3 -m pip install -r platform/requirements-test.txt
+          bash -n scripts/k3s-platform.sh
+          python3 platform/check.py
+
       - name: Test Tailscale update policy (isolated, no package upgrades)
         run: |
           sudo apt-get update
