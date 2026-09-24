@@ -1,0 +1,18 @@
+# Only explicitly labelled namespaces are subject to admission checks.
+webhook:
+  replicaCount: 1
+  failurePolicy: Fail
+  configData:
+    no-match-policy: deny
+  namespaceSelector:
+    matchExpressions:
+      - key: policy.sigstore.dev/include
+        operator: In
+        values: ["true"]
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
