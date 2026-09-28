@@ -27,6 +27,9 @@ jobs:
       - name: Test Headscale configuration and user setup (isolated)
         run: sudo python3 headscale/check.py
 
+      - name: Test Headscale release monitor (no GitHub writes)
+        run: python3 -m unittest discover -s tests/headscale_releases -v
+
       - name: Test Tailscale update policy (isolated, no package upgrades)
         run: |
           sudo apt-get update
