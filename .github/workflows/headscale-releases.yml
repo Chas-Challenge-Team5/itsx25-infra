@@ -1,0 +1,36 @@
+name: Headscale release monitor
+
+on:
+  schedule:
+    - cron: '23 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: headscale-release-monitor
+  cancel-in-progress: false
+
+jobs:
+  propose-update:
+    if: github.repository == 'Chas-Challenge-Team5/itsx25-infra' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Test release selection and PR publication (isolated)
+        run: python3 -m unittest discover -s tests/headscale_releases -v
+
+      - name: Propose the next supported stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/headscale-release-monitor.py --publish

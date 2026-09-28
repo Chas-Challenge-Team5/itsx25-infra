@@ -16,10 +16,59 @@ på nytt efter en VM-ersättning, tillsammans med återställningen av Headscale
 
 Ansvarig är den tilldelade personen i [#89](https://github.com/Chas-Challenge-Team5/itsx25-infra/issues/89)
 (Viktor vid upprättandet). Vid överlämning dokumenteras ny ansvarig i ärendet.
-Ansvarig kontrollerar varje måndag Headscales releaser och Tailscales
-säkerhetsmeddelanden samt loggarna för automatiska uppdateringar. Aktivera även
-GitHub **Watch → Custom → Releases** för `juanfont/headscale` på det egna kontot.
-Prenumerationen måste bekräftas av ansvarig; dokumentet aktiverar den inte.
+Headscales releasebevakning automatiseras av workflowen **Headscale release
+monitor** (`.github/workflows/headscale-releases.yml`). Den kör dagligen cirka
+07:23 UTC på main och kan startas manuellt med Run workflow på main. Schemalagda
+GitHub-jobb kan fördröjas; detta är inte ett löfte om en exakt körtid.
+
+Jobbet jämför stabila releaser med `VERSION` i `headscale/setup.py`. Först väljs
+senaste patch i nuvarande minorversion, sedan senaste patch i nästa minorversion.
+Prereleaser ignoreras. Saknad mellanversion eller ny majorversion kräver manuell
+bedömning. Paketet för linux_amd64 laddas ned och SHA-256 kontrolleras mot
+releasens `checksums.txt`; inget paket installeras eller körs av bevakningen.
+
+Vid en ny version öppnas en PR från `automation/headscale-vVERSION` med endast
+`VERSION` och `PACKAGE_SHA256` ändrade. Release notes och införandechecklista finns
+i PR-texten. En öppen automations-PR lämnas för granskning innan nästa skapas.
+En stängd PR för samma version återskapas inte: öppna den igen om beslutet ändras.
+En avbruten publicering kan återupptas utan force-push; avvikande filändringar på
+automationsbranchen skrivs inte över. Ingen automatisk merge eller installation.
+
+Ansvarig följer upp PR:er och misslyckade/bevakningskörningar samt kontrollerar
+Tailscales säkerhetsmeddelanden och uppdateringsloggar varje måndag. Slå på
+GitHub-notiser för relevanta Actions-fel och PR:er. **Watch → Releases** för
+Headscale är valfritt när automatiken är införd och verifierad. Ett jobb som
+slutat köras skickar inte nödvändigtvis en felnotis: kontrollera även senaste
+lyckade körning. I publika repo:n kan schemat inaktiveras efter 60 dagars inaktivitet.
+
+### Aktivera och verifiera bevakningen
+
+Workflowen börjar bevaka först när den finns på main. Den behöver `contents:
+write` och `pull-requests: write`, samt repots inställning **Allow GitHub Actions
+to create and approve pull requests**. Ingen egen PAT, GCP-behörighet, SSH-nyckel
+eller molninloggning används. En administratör behöver kontrollera inställningen
+om det vanliga kontot får 403. Bevakningen godkänner inte sina PR:er.
+
+1. Kör lokala tester och en läsande kontroll före merge:
+
+   ```bash
+   python3 -m unittest discover -s tests/headscale_releases -v
+   python3 scripts/headscale-release-monitor.py
+   ```
+
+   Läsningen använder `gh` med befintlig inloggning. `--output-dir` kan spara en
+   lokal förhandsvisning i en ny katalog under `local/`, utan att ändra källfilen.
+2. Efter merge: kör **Headscale release monitor** manuellt från main. Vid ny
+   release ska exakt en PR skapas med två ändrade värden och rätt checksumma.
+3. Kör igen: samma öppna PR ska återanvändas utan ny commit eller dubblett.
+4. Kontrollera att PR-kontrollerna körs. PR:er skapade med `GITHUB_TOKEN` kan
+   kräva **Approve workflows to run**; en person med skrivrättighet startar dem.
+   Grön bevakning ersätter inte testerna mot den nya Headscale-binären.
+5. Följ upp minst en ordinarie schemakörning och dokumentera körning/PR i #89.
+
+Misslyckad API-läsning, saknade assets eller fel checksumma ska ge rött jobb;
+tolka inte det som att ingen uppdatering behövs. Kontrollen av PR-publicering är
+isolerat testad, men ett lokalt test bevisar inte repots faktiska tokenbehörighet.
 
 - [Headscale-releaser](https://github.com/juanfont/headscale/releases)
 - [Tailscales säkerhetsmeddelanden](https://tailscale.com/security-bulletins)
@@ -27,7 +76,7 @@ Prenumerationen måste bekräftas av ansvarig; dokumentet aktiverar den inte.
 
 Vid en relevant säkerhetsrättelse ska ansvarig samma arbetsdag bedöma påverkan
 och skapa ett uppgraderingsärende med målversion, ansvarig och tid för införande.
-Andra nya Headscale-versioner bedöms vid veckokontrollen. Dokumentera även
+Andra nya Headscale-versioner bedöms via automations-PR:en. Dokumentera även
 beslutet om en uppgradering skjuts upp. Kontrollera stödet för de Tailscale-
 versioner som används; automatisk klientuppdatering ersätter inte underhåll av
 Headscale-servern. Att en version är den senaste bevisar inte att den är fri från
@@ -167,8 +216,11 @@ registrering som rutinåtgärd.
    och eventuella SQLite WAL-/SHM-filer. Bevara ägare och filrättigheter. Förvara
    en verifierad, åtkomstskyddad kopia utanför VM:ns bootdisk innan paketet byts.
 5. Kör uppgraderingen enligt den separat granskade planen. Installern `setup.py
-   install` vägrar uppgradera en annan befintlig version; `reconfigure` är bara
-   för Split DNS. Kringgå inte dessa skydd. Planen ska ange verifierad paketfil,
+   install` vägrar uppgradera en annan befintlig version; `reconfigure` är för
+   tillåtna DNS-ändringar och kräver den pinnade versionen. Efter en versions-PR
+   kan därför aktuell main inte användas för reconfigure på den gamla versionen:
+   använd motsvarande äldre revision tills uppgraderingen är genomförd.
+   Kringgå inte dessa skydd. Planen ska ange verifierad paketfil,
    konfigurationsdiff och hur tjänsten hålls stoppad under paketbytet. `.deb`-
    paketets installationsscript kan starta tjänsten: inspektera dem och använd
    ett verifierat tillfälligt systemd-maskeringsförfarande under bytet, som vid
@@ -195,7 +247,9 @@ gör ingen uppgradering och ändrar inte den låsta Headscale-versionen.
 - Tailscale-policyn är installerad på jumphosten; stabil källa, timers,
   APT-policy och dry-run är kontrollerade. Minst en ordinarie körning är granskad.
   Ange uttryckligen om en faktisk versionsuppgradering ännu inte kunnat provas.
-- Releasebevakningen är bekräftad av ansvarig och denna rutin är granskad.
+- Releasebevakningen finns på main, faktisk PR-publicering och dubblettskydd är
+  verifierade, och minst en schemakörning har följts upp. Ansvarig följer upp
+  PR:er och fel; installations-/återställningsrutinen är granskad.
 - Aktiveringsresultat och efterkontroller finns i issue/PR. Merge eller grön CI
   innebär inte i sig att automatiken har aktiverats i drift.
 
@@ -205,3 +259,6 @@ gör ingen uppgradering och ändrar inte den låsta Headscale-versionen.
 - [Headscales uppgraderings- och backupguide](https://headscale.net/stable/setup/upgrade/)
 - [Headscales klientstöd](https://headscale.net/stable/about/clients/)
 - [Tailscales uppdateringsmetoder](https://tailscale.com/kb/1067/update)
+- [GitHub Actions: PR-behörigheter](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository)
+- [GitHub Actions: händelser från GITHUB_TOKEN](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)
+- [GitHub Actions: schemalagda körningar](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
