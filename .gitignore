@@ -10,3 +10,6 @@
 
 # Python test caches
 __pycache__/
+
+# Personlig Spectre-tunnel, interna adresser ska inte i publikt repo
+spectre.ps1
