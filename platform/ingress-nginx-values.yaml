@@ -1,0 +1,21 @@
+# Lab-only choice required by the workshop; ingress-nginx is retired.
+controller:
+  replicaCount: 1
+  allowSnippetAnnotations: false
+  watchIngressWithoutClass: false
+  ingressClassResource:
+    name: nginx
+    default: false
+  service:
+    type: LoadBalancer
+    enableHttp: true
+    enableHttps: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  config:
+    server-tokens: "false"

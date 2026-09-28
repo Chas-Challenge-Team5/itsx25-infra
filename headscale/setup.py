@@ -1,7 +1,7 @@
 """Render configuration, install the initial Headscale control plane or change its Split DNS.
 
 The installer does not upgrade existing versions or overwrite changed configuration.
-reconfigure only accepts a Split DNS change and keeps a backup of the previous file.
+reconfigure accepts Split DNS and the managed company-website record, keeping a backup.
 Neither modifies SSH, OS Login, firewall rules, routing, or existing database files.
 """
 
@@ -50,11 +50,14 @@ def split_dns_resolver(value):
     return str(address)
 
 
-def configuration(server_url, base_domain, resolver):
+def configuration(server_url, base_domain, resolver, company_website_ip="10.0.5.3"):
     url = urlsplit(server_url)
     hostname = domain(url.hostname or "")
     domain(base_domain)
     resolver = split_dns_resolver(resolver)
+    address = ipaddress.IPv4Address(company_website_ip)
+    if address not in ipaddress.ip_network("10.0.0.0/8"):
+        raise ValueError("The company website must use an internal lab IPv4 address.")
     if server_url != f"https://{hostname}" or url.username or url.password:
         raise ValueError("Use the registered HTTPS URL without credentials, port, path or trailing slash.")
     if hostname == base_domain:
@@ -81,6 +84,7 @@ def configuration(server_url, base_domain, resolver):
             "path": "/etc/headscale/policy.hujson",
         },
         "dns": {"magic_dns": True, "base_domain": base_domain,
+                "extra_records": [{"name": f"company-website.{base_domain}", "type": "A", "value": str(address)}],
                 "override_local_dns": False, "nameservers": {"global": [], "split": {SPLIT_DNS_ZONE: [resolver]}}},
         "unix_socket": "/var/run/headscale/headscale.sock",
         "unix_socket_permission": "0770",
@@ -93,15 +97,22 @@ def expected_configuration(config):
     resolvers = config["dns"]["nameservers"]["split"][SPLIT_DNS_ZONE]
     if not isinstance(resolvers, list) or len(resolvers) != 1:
         raise ValueError("Use exactly one Split DNS resolver.")
-    expected = configuration(config["server_url"], config["dns"]["base_domain"], resolvers[0])
+    records = config["dns"]["extra_records"]
+    if not isinstance(records, list) or len(records) != 1:
+        raise ValueError("Use exactly the managed company-website DNS record.")
+    expected = configuration(config["server_url"], config["dns"]["base_domain"], resolvers[0], records[0]["value"])
     if config != expected:
         raise ValueError("Use a fresh configuration produced by the render command.")
     return config
 
 
-def without_split_dns(config):
+def without_managed_dns(config):
     copy = json.loads(json.dumps(config))
     copy["dns"]["nameservers"]["split"] = None
+    # Preserve unrelated records in the comparison: never silently delete them.
+    name = f"company-website.{copy['dns']['base_domain']}"
+    copy["dns"]["extra_records"] = [record for record in copy["dns"].get("extra_records", [])
+                                     if record.get("name") != name or record.get("type") != "A"]
     return copy
 
 
@@ -242,8 +253,8 @@ def reconfigure(source, target=Path("/etc/headscale/config.yaml")):
         if current == config:
             print("Configuration already matches; nothing changed.")
             return
-        if without_split_dns(current) != without_split_dns(config):
-            raise ValueError("Only the Split DNS resolver may change; review other differences separately.")
+        if without_managed_dns(current) != without_managed_dns(config):
+            raise ValueError("Only Split DNS and the company-website A record may change; review other differences separately.")
         stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
         backup = target.with_name(f"{target.name}.{stamp}.bak")
         candidate = candidate_path(target)
@@ -254,6 +265,7 @@ def reconfigure(source, target=Path("/etc/headscale/config.yaml")):
         try:
             validate_as_service_user(candidate)
             os.replace(candidate, target)
+            # In 0.29.3 SIGHUP reloads ACLs, not inline DNS settings.
             run("systemctl", "restart", "headscale.service")
             wait_until_ready()
         except Exception:
@@ -261,7 +273,7 @@ def reconfigure(source, target=Path("/etc/headscale/config.yaml")):
             shutil.copy2(backup, target)
             run("systemctl", "restart", "headscale.service", check=False)
             raise
-        print(f"Split DNS updated and Headscale restarted. Previous configuration: {backup}")
+        print(f"Managed DNS updated and Headscale restarted. Previous configuration: {backup}")
 
 
 def main():
@@ -273,13 +285,14 @@ def main():
     render.add_argument("--split-dns-resolver", required=True,
                         help="Tailnet IPv4 address of the jumphost running dnsmasq")
     render.add_argument("--output", type=Path, required=True)
+    render.add_argument("--company-website-ip", default="10.0.5.3")
     deploy = commands.add_parser("install")
     deploy.add_argument("--config", type=Path, required=True)
     change = commands.add_parser("reconfigure")
     change.add_argument("--config", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "render":
-        config = configuration(args.server_url, args.base_domain, args.split_dns_resolver)
+        config = configuration(args.server_url, args.base_domain, args.split_dns_resolver, args.company_website_ip)
         # JSON is a YAML subset and avoids another configuration parser dependency.
         with args.output.open("x", encoding="utf-8") as output:
             json.dump(config, output, indent=2)

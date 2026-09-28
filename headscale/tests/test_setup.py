@@ -97,19 +97,35 @@ class ConfigurationTests(unittest.TestCase):
                     SETUP.install_policy(config)
                 self.assertEqual(target.read_text(encoding="utf-8"), "// changed\n")
 
-    def test_only_split_dns_may_differ_on_reconfigure(self):
+    def test_only_managed_dns_may_differ_on_reconfigure(self):
         before = SETUP.configuration("https://hs.example.com", "tail.example.com", RESOLVER)
         before["dns"]["nameservers"]["split"] = {}
         after = SETUP.configuration("https://hs.example.com", "tail.example.com", RESOLVER)
-        self.assertEqual(SETUP.without_split_dns(before), SETUP.without_split_dns(after))
+        before["dns"].pop("extra_records")
+        self.assertEqual(SETUP.without_managed_dns(before), SETUP.without_managed_dns(after))
         self.assertEqual(before["dns"]["nameservers"]["split"], {}, "The input must not be modified.")
         other = SETUP.configuration("https://hs.example.com", "other.example.com", RESOLVER)
-        self.assertNotEqual(SETUP.without_split_dns(before), SETUP.without_split_dns(other))
+        self.assertNotEqual(SETUP.without_managed_dns(before), SETUP.without_managed_dns(other))
+
+    def test_company_record_matches_domain_and_preserves_split_dns(self):
+        config = SETUP.configuration("https://hs.example.com", "team5.arpa", RESOLVER)
+        self.assertEqual(config["dns"]["extra_records"], [
+            {"name": "company-website.team5.arpa", "type": "A", "value": "10.0.5.3"}])
+        self.assertEqual(config["dns"]["nameservers"]["split"][SETUP.SPLIT_DNS_ZONE], [RESOLVER])
+        with self.assertRaises(ValueError):
+            SETUP.configuration("https://hs.example.com", "team5.arpa", RESOLVER, "8.8.8.8")
+
+    def test_reconfigure_comparison_preserves_unmanaged_records(self):
+        before = SETUP.configuration("https://hs.example.com", "team5.arpa", RESOLVER)
+        after = json.loads(json.dumps(before))
+        before["dns"]["extra_records"].append({"name": "other.team5.arpa", "type": "A", "value": "10.0.5.4"})
+        self.assertNotEqual(SETUP.without_managed_dns(before), SETUP.without_managed_dns(after))
 
     @unittest.skipUnless(os.name == "posix" and Path("/run/lock").is_dir(), "Requires the Linux lock directory")
     def test_reconfigure_keeps_backup_and_rolls_back_on_failure(self):
         old = SETUP.configuration("https://hs.example.com", "tail.example.com", RESOLVER)
         old["dns"]["nameservers"]["split"] = {}
+        old["dns"].pop("extra_records")
         new = SETUP.configuration("https://hs.example.com", "tail.example.com", RESOLVER)
         installed = subprocess.CompletedProcess([], 0, f"install ok installed|{SETUP.VERSION}")
         for restart_fails in (False, True):
