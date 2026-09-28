@@ -15,9 +15,9 @@ if [[ "$action" != render ]]; then
   node=$(kubectl get nodes -o jsonpath='{.items[*].metadata.name}')
   [[ "$node" == team5-primary ]] || { echo "Expected only team5-primary, found: $node" >&2; exit 1; }
   if [[ "$action" == install-ingress ]]; then
-    # Exclude this release's namespace so a repeated install can upgrade its
-    # own ServiceLB pods, while refusing conflicting app/other-controller pods.
-    ports=$(kubectl get pods -A -o jsonpath='{range .items[?(@.metadata.namespace!="ingress-nginx")]}{range .spec.containers[*].ports[*]}{.hostPort}{"\n"}{end}{end}')
+    # ServiceLB pods live in kube-system. Select by service name so retries
+    # ignore our own load balancer but still detect other users of port 80.
+    ports=$(kubectl get pods -A -l 'svccontroller.k3s.cattle.io/svcname!=ingress-nginx-controller' -o jsonpath='{range .items[*]}{range .spec.containers[*].ports[*]}{.hostPort}{"\n"}{end}{end}')
     if grep -qx 80 <<< "$ports"; then
       echo 'Port 80 is still reserved by a pod. Complete the coordinated hostPort cutover first.' >&2
       exit 1

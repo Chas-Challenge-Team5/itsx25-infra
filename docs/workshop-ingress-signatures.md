@@ -4,8 +4,8 @@ Infra förvaltar DNS, controllers och signaturpolicy. `company-website` förvalt
 Ingress, appens RBAC och build/sign/deploy. Merge av infra startar inte dessa
 manuella bootstrapsteg. Inga nya GCP-brandväggsportar behövs för HTTP på primary.
 
-Ingress-nginx används enligt användarens uttryckliga labbval den 24 september
-2026 trots att projektet pensionerats. Helm 3.19.0, ingress-chart 4.15.1 och
+Ingress-nginx är teamets val för labben trots att projektet pensionerats.
+Helm 3.19.0, ingress-chart 4.15.1 och
 policy-controller-chart 0.10.8 hämtas med låsta SHA-256-kontroller i scriptet.
 Helm packas upp tillfälligt, vilket ersätter workshopens globala APT-installation.
 Versionsuppgraderingar ska granskas separat.
@@ -17,6 +17,8 @@ pods, ledigt minne/CPU, fungerande IAP/SSH och klientåtkomst. Spara privat back
 av Headscale-konfiguration och en konsekvent backup av appens SQLite/PVC-data.
 Inventera alla workloads/images i `default`, inklusive init-containrar. Förbered
 den aktuella manifestversionen och image-referensen för återställning.
+Kör `free -m` på primary före och efter varje controller-installation. Noden har
+2 GB RAM och metrics-server är avstängd, så `kubectl top` kan inte förutsättas fungera.
 
 Lokalt kan controllers renderas utan Kubernetes-åtkomst:
 
@@ -52,14 +54,19 @@ Källa: https://github.com/juanfont/headscale/blob/v0.29.3/hscontrol/app.go
    fungerande `ClusterIP` Service på 7000. Behåll PVC och `Recreate` för SQLite.
    HTTP-åtkomst kan vara nere tills controllern är redo.
 3. Kör `sudo bash scripts/k3s-platform.sh install-ingress` från infra-repot på
-   primary. Scriptet vägrar om någon pod fortfarande reserverar hostPort 80.
+   primary. Scriptet vägrar om någon annan pod fortfarande reserverar hostPort 80.
+   Egna ServiceLB-poddar undantas via serviceetiketten, även i `kube-system`.
+   Kontrollera dem med `sudo kubectl get pods -A -l svccontroller.k3s.cattle.io/svcname=ingress-nginx-controller -o wide`.
    K3s ServiceLB måste vara aktiverad. Controllerns Service exponerar endast HTTP;
    detta steg inför inte TLS för appen.
 4. Kontrollera `sudo kubectl get pods,svc -n ingress-nginx` och
    `sudo kubectl get deploy,pods,svc,ingress -n default`.
 5. Testa `curl -H 'Host: company-website.team5.arpa' http://127.0.0.1/` på primary
    och `http://company-website.team5.arpa` från klienterna. Kontrollera även
-   inloggning, databevarande och befintlig NetworkPolicy.
+   inloggning och databevarande. Kontrollera faktisk NetworkPolicy med
+   `sudo kubectl get networkpolicy -n default`: en fil i app-repot betyder inte
+   att policyn är applicerad. Införande av saknad policy behöver ske separat
+   som administratör och verifieras; appens pipeline applicerar den inte.
 
 Vid återställning: avinstallera ingress-releasen och invänta att ServiceLB-poddarna
 släppt port 80, återlägg sedan tidigare appmanifest/image med hostPort. Radera
