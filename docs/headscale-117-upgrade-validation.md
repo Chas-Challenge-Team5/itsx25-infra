@@ -1,99 +1,105 @@
 # Issue #117 – Headscale 0.29.3 → 0.29.4
 
-## Scope
+## Omfattning
 
-Validation and production upgrade plan for Headscale 0.29.4.
+Validering och plan för produktionsuppgradering av Headscale till version 0.29.4.
 
-Related:
+Relaterade ärenden:
 - Issue #117
-- PR #114 – pinned Headscale version and SHA256
-- Issue #85 – Headscale backups
+- PR #114 – fastställd Headscale-version och SHA256
+- Issue #85 – backup av Headscale
 
-## Completed validation
+## Genomförd validering
 
-### Package upgrade
+### Paketuppgradering
 
-Test environment: isolated Debian 13 Docker container with `--network none`.
+Testmiljö: isolerad Debian 13 Docker-container med `--network none`.
 
-- Headscale 0.29.3 installed successfully.
-- Package upgrade to 0.29.4 completed successfully.
-- `dpkg-query` reported `install ok installed`.
-- Headscale binary reported `v0.29.4`.
+- Headscale 0.29.3 installerades utan problem.
+- Paketuppgraderingen till 0.29.4 genomfördes.
+- `dpkg-query` rapporterade `install ok installed`.
+- Headscale-binären rapporterade version `v0.29.4`.
 
-### Snapshot restoration
+### Återställning av snapshot
 
-The latest available Headscale backup snapshot was restored to a separate
-20 GB disk and attached to the jumphost in READ_ONLY mode.
+Den senast tillgängliga backupsnapshoten för Headscale återställdes till en separat disk på 20 GB och anslöts till jumphosten i READ_ONLY-läge.
 
-The restored filesystem was mounted with `ro,noload`.
+Det återställda filsystemet monterades med `ro,noload`.
 
-The snapshot contained:
-- Headscale configuration and policy
-- SQLite database
-- Noise private key
+Snapshoten innehöll:
+- Headscale-konfiguration och policy
+- SQLite-databas
+- Privat Noise-nyckel
 
-SQLite integrity check returned `ok`.
+SQLite-kontrollen `integrity_check` returnerade `ok`.
 
-### Isolated database validation
+### Isolerad databasvalidering
 
-A copy of the restored data was tested with Headscale 0.29.4.
-The original copy was retained separately for rollback.
+En kopia av den återställda datan testades med Headscale 0.29.4. Originalkopian bevarades separat för rollback.
 
-Headscale 0.29.4 `configtest` completed without a reported error.
+`configtest` med Headscale 0.29.4 genomfördes utan rapporterade fel.
 
-Database comparison:
+Databasjämförelse:
 
-| Check | Original | Migration test | Rollback test |
+| Kontroll | Original | Migrationstest | Rollbacktest |
 |---|---|---|---|
-| SQLite integrity | OK | OK | OK |
-| Users | 7 | 7 | 7 |
-| Nodes | 6 | 6 | 6 |
-| User IDs | 1–7 | 1–7 | 1–7 |
-| Node IDs | 1–6 | 1–6 | 1–6 |
+| SQLite-integritet | OK | OK | OK |
+| Användare | 7 | 7 | 7 |
+| Noder | 6 | 6 | 6 |
+| Användar-ID | 1–7 | 1–7 | 1–7 |
+| Nod-ID | 1–6 | 1–6 | 1–6 |
 
-### Rollback validation
+### Validering av rollback
 
-- Headscale 0.29.3 was successfully reinstalled in the test container.
-- A separate rollback copy was created from the original restored data.
-- Version 0.29.3 passed `configtest` against the rollback copy.
-- The migrated database was never opened using the older binary.
+- Headscale 0.29.3 återinstallerades i testcontainern.
+- En separat rollbackkopia skapades från den ursprungliga återställda datan.
+- Version 0.29.3 klarade `configtest` mot rollbackkopian.
+- Den migrerade databasen öppnades aldrig med den äldre binären.
 
-The tests did not start a Headscale server or connect test clients to
-the production tailnet. They validate package installation, database
-integrity and configuration loading, not live client connectivity.
+Ingen Headscale-server startades under testerna och inga testklienter anslöts till produktionsmiljöns tailnet.
 
-## Production prerequisites
+Tester­na verifierar paketinstallation, databasintegritet och konfigurationsinläsning, men inte aktiv klientanslutning.
 
-- Confirm all Tailscale clients run version 1.80.0 or later.
-- Agree on a maintenance window with the team.
-- Prevent new node registrations during maintenance.
-- Verify IAP access independently of Tailscale.
-- Confirm backup and rollback responsibilities.
-- Keep PR #114 unmerged until the maintenance window.
+## Förutsättningar inför produktionsuppgraderingen
 
-## Production upgrade plan
+- Bekräfta att samtliga Tailscale-klienter kör version 1.80.0 eller senare.
+- Kom överens med teamet om ett underhållsfönster.
+- Förhindra registrering av nya noder under underhållet.
+- Verifiera att IAP-åtkomst fungerar oberoende av Tailscale.
+- Fastställ ansvar för backup och rollback.
+- Låt PR #114 förbli omergad fram till underhållsfönstret.
 
-1. Record current service, users, nodes, routes and DNS state.
-2. Stop Headscale and take a consistent full backup of
-   `/etc/headscale` and `/var/lib/headscale` outside the boot disk.
-3. Preserve ownership, permissions, database files and Noise key.
-4. Mask the service to prevent package post-installation auto-restart.
-5. Install the verified Headscale 0.29.4 package.
-6. Coordinate merge of PR #114 in the same maintenance window.
-7. Unmask and start Headscale after package/configuration checks.
-8. Verify service status, logs, users, node IDs, routes, DNS and clients.
+### Varför PR #114 måste mergas under samma underhållsfönster
+
+Funktionen `reconfigure` i `headscale/setup.py` kräver att den installerade Headscale-versionen överensstämmer med `VERSION` i koden.
+
+PR #114 ändrar `VERSION` till 0.29.4. Om PR:en mergas innan produktionsservern har uppgraderats från 0.29.3 uppstår en versionsskillnad. Det innebär att DNS-konfigurationen inte kan ändras via `reconfigure` från main förrän servern har uppgraderats.
+
+Därför ska PR #114 inte mergas i förväg, utan samordnas med paketuppgraderingen under samma underhållsfönster.
+
+## Plan för produktionsuppgradering
+
+1. Dokumentera aktuell tjänstestatus, användare, noder, routes och DNS-konfiguration.
+2. Stoppa Headscale och skapa en konsekvent, fullständig backup av `/etc/headscale` och `/var/lib/headscale` utanför bootdisken.
+3. Bevara ägarskap, filbehörigheter, databasfiler och Noise-nyckeln.
+4. Maskera tjänsten för att förhindra automatisk omstart under paketinstallationen.
+5. Installera det verifierade Headscale-paketet version 0.29.4.
+6. Samordna merge av PR #114 under samma underhållsfönster.
+7. Avmaskera och starta Headscale efter kontroll av paket och konfiguration.
+8. Verifiera tjänstestatus, loggar, användare, nod-ID:n, routes, DNS och klientanslutningar.
 
 ## Rollback
 
-If the upgrade fails, stop Headscale and restore the complete
-pre-upgrade backup together with Headscale 0.29.3.
+Om uppgraderingen misslyckas ska Headscale stoppas och den fullständiga backupen från före uppgraderingen återställas tillsammans med Headscale 0.29.3.
 
-Do not run the old binary against a database already migrated by
-0.29.4. Do not purge the package.
+Kör aldrig den äldre binären mot en databas som redan har migrerats av version 0.29.4. Avinstallera inte paketet med `purge`.
 
-Changes made after the backup may be lost during rollback.
+Ändringar som gjorts efter backupen kan gå förlorade vid rollback.
 
 ## Status
 
-Isolated validation completed. Production upgrade and post-upgrade
-verification are pending. Issue #117 must remain open until then.
+Den isolerade valideringen är genomförd.
+
+Produktionsuppgraderingen och efterföljande verifieringar återstår.
+
+Issue #117 ska förbli öppet tills produktionsuppgraderingen har genomförts och verifierats.
