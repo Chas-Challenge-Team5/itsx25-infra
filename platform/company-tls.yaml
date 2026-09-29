@@ -1,0 +1,33 @@
+# Apply manually after installing the intermediate CA Secret in default.
+# The root private key must never be uploaded to Kubernetes.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: company-website-ca
+  namespace: default
+spec:
+  ca:
+    secretName: company-website-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: company-website
+  namespace: default
+spec:
+  secretName: company-website-tls
+  duration: 2160h
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  dnsNames:
+    - company-website.team5.arpa
+  usages:
+    - digital signature
+    - server auth
+  issuerRef:
+    name: company-website-ca
+    kind: Issuer
+    group: cert-manager.io

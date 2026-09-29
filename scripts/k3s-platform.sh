@@ -5,8 +5,8 @@ set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 action=${1:-}
 case "$action" in
-  render|install-ingress|install-policy) ;;
-  *) echo 'Usage: bash scripts/k3s-platform.sh render|install-ingress|install-policy' >&2; exit 2 ;;
+  render|install-ingress|install-policy|install-cert-manager) ;;
+  *) echo 'Usage: bash scripts/k3s-platform.sh render|install-ingress|install-policy|install-cert-manager' >&2; exit 2 ;;
 esac
 
 if [[ "$action" != render ]]; then
@@ -16,10 +16,10 @@ if [[ "$action" != render ]]; then
   [[ "$node" == team5-primary ]] || { echo "Expected only team5-primary, found: $node" >&2; exit 1; }
   if [[ "$action" == install-ingress ]]; then
     # ServiceLB pods live in kube-system. Select by service name so retries
-    # ignore our own load balancer but still detect other users of port 80.
+    # ignore our own load balancer but still detect other users of ports 80/443.
     ports=$(kubectl get pods -A -l 'svccontroller.k3s.cattle.io/svcname!=ingress-nginx-controller' -o jsonpath='{range .items[*]}{range .spec.containers[*].ports[*]}{.hostPort}{"\n"}{end}{end}')
-    if grep -qx 80 <<< "$ports"; then
-      echo 'Port 80 is still reserved by a pod. Complete the coordinated hostPort cutover first.' >&2
+    if grep -Eq '^(80|443)$' <<< "$ports"; then
+      echo 'Port 80 or 443 is reserved by another pod. Resolve the conflict before upgrading ingress.' >&2
       exit 1
     fi
   fi
@@ -67,3 +67,10 @@ if [[ "$action" == render || "$action" == install-policy ]]; then
 fi
 # Intentionally separate: review/apply image-policy.yaml and test a signed image
 # before opting default into enforcement. Installation alone does not opt it in.
+
+if [[ "$action" == render || "$action" == install-cert-manager ]]; then
+  install_chart cert-manager cert-manager v1.21.2 \
+    https://charts.jetstack.io/charts/cert-manager-v1.21.2.tgz \
+    73a56e1728edd6c99f1f31082618c3259d279a76b7ebd3d4bdc5475c2442d34a \
+    "$repo_root/platform/cert-manager-values.yaml"
+fi

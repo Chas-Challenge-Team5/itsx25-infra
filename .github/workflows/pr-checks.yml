@@ -107,6 +107,14 @@ jobs:
           terraform test
         working-directory: access
 
+      # CA recovery IAM has separate state; secret payloads never enter Terraform.
+      - name: Validate CA recovery IAM (mocked, no secret payloads)
+        working-directory: pki-backup
+        run: |
+          terraform init -input=false -backend=false -lockfile=readonly
+          terraform validate
+          terraform test
+
       # Monitoring has separate state and is applied manually by an operator.
       - name: Terraform Init (monitoring, no backend)
         run: terraform init -input=false -backend=false -lockfile=readonly
