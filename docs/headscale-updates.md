@@ -86,7 +86,9 @@ sårbarheter.
 
 1. [#85](https://github.com/Chas-Challenge-Team5/itsx25-infra/issues/85) ska vara
    införd och verifierad: raderingsskydd, minst en aktuell snapshot och ett
-   dokumenterat återställningsprov. En merge av backupkoden räcker inte.
+   dokumenterat återställningsprov enligt den isolerade metoden i
+   [backupguiden](headscale-backup.md). Anslut inte en bootdiskkopia till
+   produktionsjumphosten. En merge av backupkoden räcker inte.
 2. SSH fungerar även via tailnätet. Använd IAP med fungerande sudo vid detta
    införande, så att åtkomsten inte beror på Tailscale, och samordna med teamet.
    En Tailscale-uppdatering kan starta om `tailscaled` och kort avbryta routing/DNS.
@@ -206,7 +208,9 @@ registrering som rutinåtgärd.
    kräver det; bevara serveradress, MagicDNS, Split DNS och säkerhetsinställningar.
 3. Kör `sudo python3 headscale/check.py` i isolerad Linuxmiljö. Prova därefter
    uppgradering och återställning med en kopia av aktuell databas, nyckel och
-   konfiguration i en isolerad miljö utan produktionsklienter. Publicera inte
+   konfiguration i en isolerad miljö utan produktionsklienter enligt
+   [backupguiden](headscale-backup.md). Test-VM:n får inte boota från en
+   produktionssnapshot eller köra dess Tailscale-identitet. Publicera inte
    datakopior eller nycklar. En tom testdatabas bevisar inte att migrationen av
    befintlig data fungerar.
 4. Samordna ett underhållstillfälle och verifiera färsk backup enligt #85.
