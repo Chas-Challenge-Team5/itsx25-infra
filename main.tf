@@ -180,6 +180,12 @@ resource "google_compute_instance" "jumphost" {
       fi
 
       echo 'vm.swappiness=20' > /etc/sysctl.d/01-swappiness.conf
+      # Keep an EFI mount failure from blocking the next boot (#125).
+      # Startup runs after local-fs: existing VMs need a separate first rollout.
+      echo '${filebase64("${path.module}/scripts/configure-efi-mount.py")}' | base64 --decode > /usr/local/sbin/team-efi-mount
+      chmod 750 /usr/local/sbin/team-efi-mount
+      /usr/bin/python3 /usr/local/sbin/team-efi-mount || echo 'EFI boot policy failed; inspect fstab before rebooting.' >&2
+
       echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/99-ip-forward.conf
       # Encode the exact tested helper so nested heredoc indentation cannot corrupt it.
       echo '${base64encode(local.nat_firewall_script)}' | base64 --decode > /usr/local/sbin/team-nat-firewall
@@ -331,6 +337,12 @@ resource "google_compute_instance" "primary" {
       fi
 
       echo 'vm.swappiness=20' > /etc/sysctl.d/01-swappiness.conf
+      # Keep an EFI mount failure from blocking the next boot (#125).
+      # Startup runs after local-fs: existing VMs need a separate first rollout.
+      echo '${filebase64("${path.module}/scripts/configure-efi-mount.py")}' | base64 --decode > /usr/local/sbin/team-efi-mount
+      chmod 750 /usr/local/sbin/team-efi-mount
+      /usr/bin/python3 /usr/local/sbin/team-efi-mount || echo 'EFI boot policy failed; inspect fstab before rebooting.' >&2
+
       sysctl --system
     EOT
   }

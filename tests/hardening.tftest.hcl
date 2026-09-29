@@ -58,3 +58,20 @@ run "both_instances_install_host_hardening" {
     error_message = "The drop-ins must disable home-directory keys, X11 and agent forwarding and LLMNR, and leave TCP forwarding for ssh -J."
   }
 }
+
+run "both_instances_install_efi_boot_policy" {
+  command = plan
+
+  assert {
+    condition = alltrue([
+      for script in [
+        google_compute_instance.jumphost.metadata["startup-script"],
+        google_compute_instance.primary.metadata["startup-script"],
+        ] : (
+        strcontains(script, filebase64("${path.module}/scripts/configure-efi-mount.py")) &&
+        strcontains(script, "/usr/bin/python3 /usr/local/sbin/team-efi-mount || echo")
+      )
+    ])
+    error_message = "Both instances must install and run the tested EFI helper, reporting errors without aborting startup."
+  }
+}
