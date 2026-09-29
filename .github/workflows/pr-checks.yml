@@ -105,6 +105,27 @@ jobs:
           terraform test
         working-directory: access
 
+      # Monitoring has separate state and is applied manually by an operator.
+      - name: Terraform Init (monitoring, no backend)
+        run: terraform init -input=false -backend=false -lockfile=readonly
+        working-directory: monitoring
+
+      - name: Terraform Validate and Test (monitoring, mocked)
+        run: |
+          terraform validate
+          terraform test
+        working-directory: monitoring
+
+      # Extract only the test tool; do not install or start a Prometheus service.
+      - name: Test monitoring alert queries (isolated, no GCP access)
+        run: |
+          mkdir -p "$RUNNER_TEMP/promtool"
+          cd "$RUNNER_TEMP/promtool"
+          apt-get download prometheus
+          dpkg-deb -x prometheus_*.deb extracted
+          cd "$GITHUB_WORKSPACE"
+          PROMTOOL="$RUNNER_TEMP/promtool/extracted/usr/bin/promtool" python3 -m unittest discover -s tests/monitoring -v
+
       # Pinned hash from the v0.55.1 checksums.txt, so a replaced release asset fails here.
       - name: Install TFLint
         env:

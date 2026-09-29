@@ -19,6 +19,7 @@ updates:
       - "/bootstrap"
       - "/access"
       - "/iap-access"
+      - "/monitoring"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5

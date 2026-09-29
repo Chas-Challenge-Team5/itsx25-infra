@@ -1,0 +1,7 @@
+(
+  count(count by (checker_location) (${metric} == 0)) >= 2
+  or sum(absent_over_time(${metric}[5m])) == 1
+)
+and on() (
+  ${operating_window}
+)

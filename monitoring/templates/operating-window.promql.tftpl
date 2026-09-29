@@ -1,0 +1,5 @@
+# Europe/Stockholm: UTC+1, UTC+2 between the last Sundays of March/October at 01:00 UTC.
+# Subtracting one hour in the calendar expression makes those transitions midnight.
+# A Sunday on/after day 25 is the last Sunday. Tests compare with IANA zoneinfo.
+# Filter (not bool): outside 08:10–24:00 this must return NO series, never a zero sample.
+(vector((time() / 60 + 60 + 60 * scalar(${daylight_saving})) % 1440) >= 490)

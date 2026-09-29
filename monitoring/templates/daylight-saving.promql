@@ -1,0 +1,8 @@
+(
+  (month(vector(time() - 3600)) > bool 3)
+  * (month(vector(time() - 3600)) < bool 10)
+  + (month(vector(time() - 3600)) == bool 3)
+  * ((day_of_month(vector(time() - 3600)) - day_of_week(vector(time() - 3600))) >= bool 25)
+  + (month(vector(time() - 3600)) == bool 10)
+  * ((day_of_month(vector(time() - 3600)) - day_of_week(vector(time() - 3600))) < bool 25)
+)

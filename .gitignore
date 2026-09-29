@@ -10,3 +10,6 @@
 
 # Python test caches
 __pycache__/
+
+# Local monitoring recipients; use the committed example as a template.
+/monitoring/terraform.tfvars
