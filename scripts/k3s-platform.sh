@@ -5,8 +5,8 @@ set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 action=${1:-}
 case "$action" in
-  render|install-ingress|install-policy|install-cert-manager) ;;
-  *) echo 'Usage: bash scripts/k3s-platform.sh render|install-ingress|install-policy|install-cert-manager' >&2; exit 2 ;;
+  render|install-ingress|install-policy|install-cert-manager|install-security-scanner) ;;
+  *) echo 'Usage: bash scripts/k3s-platform.sh render|install-ingress|install-policy|install-cert-manager|install-security-scanner' >&2; exit 2 ;;
 esac
 
 if [[ "$action" != render ]]; then
@@ -23,6 +23,23 @@ if [[ "$action" != render ]]; then
       exit 1
     fi
   fi
+fi
+
+if [[ "$action" == install-security-scanner ]]; then
+  # Ingen Helm här. Webhooken läses från en lokal fil utanför repot och når aldrig git.
+  ns=security-tools
+  kubectl apply -f "$repo_root/platform/security-tools/namespace.yaml"
+  if [[ -n ${DISCORD_WEBHOOK_FILE:-} ]]; then
+    [[ -s "$DISCORD_WEBHOOK_FILE" ]] || { echo "DISCORD_WEBHOOK_FILE saknas eller är tom." >&2; exit 1; }
+    kubectl -n "$ns" create secret generic sbom-vulnerability-scanner-secrets       --from-file=discord-webhook-url="$DISCORD_WEBHOOK_FILE" --dry-run=client -o yaml | kubectl apply -f -
+  elif ! kubectl -n "$ns" get secret sbom-vulnerability-scanner-secrets >/dev/null 2>&1; then
+    echo 'Secret saknas. Sätt DISCORD_WEBHOOK_FILE till en lokal fil med webhook-URL:en (docs/security-scanner.md).' >&2
+    exit 1
+  fi
+  kubectl -n "$ns" create configmap scanner-script     --from-file=scan.sh="$repo_root/platform/security-tools/scan.sh" --dry-run=client -o yaml | kubectl apply -f -
+  kubectl apply -f "$repo_root/platform/security-tools/rbac.yaml" -f "$repo_root/platform/security-tools/cronjob.yaml"
+  echo 'Scannern är installerad. Kör en manuell testkörning enligt docs/security-scanner.md.'
+  exit 0
 fi
 
 scratch=$(mktemp -d -t team5-platform-XXXXXXXX)

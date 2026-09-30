@@ -1,0 +1,30 @@
+# Scannern behöver bara läsa poddar i default. Role/RoleBinding, inte ClusterRole.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sbom-scanner-sa
+  namespace: security-tools
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sbom-scanner-pod-reader
+  namespace: default
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sbom-scanner-pod-reader-binding
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: sbom-scanner-sa
+    namespace: security-tools
+roleRef:
+  kind: Role
+  name: sbom-scanner-pod-reader
+  apiGroup: rbac.authorization.k8s.io
