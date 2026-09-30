@@ -60,9 +60,11 @@ IMAGE=${IMAGE_ID#*://}
 echo "[+] Scannar: $IMAGE"
 
 # verify-attestation kontrollerar signaturen mot vår pipeline-identitet, inte bara att en SBOM finns.
+# Egen rad först: busybox sh saknar pipefail i en pipe, så ett misslyckat cosign hade annars kunnat passera.
 cosign verify-attestation "$IMAGE" --type cyclonedx \
   --certificate-identity "$CERT_IDENTITY" --certificate-oidc-issuer "$CERT_OIDC_ISSUER" \
-  | jq -rs '.[0].payload' | base64 -d | jq .predicate > "$WORK/sbom.json"
+  > "$WORK/attestation.jsonl"
+jq -rs '.[0].payload' < "$WORK/attestation.jsonl" | base64 -d | jq .predicate > "$WORK/sbom.json"
 
 trivy sbom "$WORK/sbom.json" --format json --ignore-unfixed -o "$WORK/report.json"
 COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH" or .Severity=="CRITICAL")] | length' "$WORK/report.json")
