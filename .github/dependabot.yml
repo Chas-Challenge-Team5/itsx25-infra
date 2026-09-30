@@ -20,6 +20,7 @@ updates:
       - "/access"
       - "/iap-access"
       - "/monitoring"
+      - "/pki-backup"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5

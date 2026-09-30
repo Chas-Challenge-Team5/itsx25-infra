@@ -9,7 +9,7 @@ controller:
   service:
     type: LoadBalancer
     enableHttp: true
-    enableHttps: false
+    enableHttps: true
   resources:
     requests:
       cpu: 100m

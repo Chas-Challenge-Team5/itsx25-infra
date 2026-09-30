@@ -2,7 +2,8 @@
 
 Infra förvaltar DNS, controllers och signaturpolicy. `company-website` förvaltar
 Ingress, appens RBAC och build/sign/deploy. Merge av infra startar inte dessa
-manuella bootstrapsteg. Inga nya GCP-brandväggsportar behövs för HTTP på primary.
+manuella bootstrapsteg. HTTP använder TCP/80. HTTPS-tillägget använder TCP/443
+och intern CA enligt [HTTPS-guiden](company-https.md).
 
 Ingress-nginx är teamets val för labben trots att projektet pensionerats.
 Helm 3.19.0, ingress-chart 4.15.1 och
@@ -57,8 +58,8 @@ Källa: https://github.com/juanfont/headscale/blob/v0.29.3/hscontrol/app.go
    primary. Scriptet vägrar om någon annan pod fortfarande reserverar hostPort 80.
    Egna ServiceLB-poddar undantas via serviceetiketten, även i `kube-system`.
    Kontrollera dem med `sudo kubectl get pods -A -l svccontroller.k3s.cattle.io/svcname=ingress-nginx-controller -o wide`.
-   K3s ServiceLB måste vara aktiverad. Controllerns Service exponerar endast HTTP;
-   detta steg inför inte TLS för appen.
+   K3s ServiceLB måste vara aktiverad. Controllerns Service exponerar HTTP och
+   HTTPS; certifikat och appens TLS införs separat enligt HTTPS-guiden.
 4. Kontrollera `sudo kubectl get pods,svc -n ingress-nginx` och
    `sudo kubectl get deploy,pods,svc,ingress -n default`.
 5. Testa `curl -H 'Host: company-website.team5.arpa' http://127.0.0.1/` på primary

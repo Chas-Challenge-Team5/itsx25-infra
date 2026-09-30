@@ -24,7 +24,14 @@ def main():
     service = next(doc for doc in documents if doc["kind"] == "Service"
                    and doc["metadata"]["name"] == "ingress-nginx-controller")
     assert service["spec"]["type"] == "LoadBalancer"
-    assert [port["port"] for port in service["spec"]["ports"]] == [80]
+    assert [port["port"] for port in service["spec"]["ports"]] == [80, 443]
+    for resource in yaml.safe_load_all((ROOT / "platform/company-tls.yaml").read_text()):
+        definition = next(doc for doc in documents if doc["kind"] == "CustomResourceDefinition"
+                          and doc["spec"]["names"]["kind"] == resource["kind"]
+                          and doc["spec"]["group"] == "cert-manager.io")
+        tls_schema = next(v["schema"]["openAPIV3Schema"] for v in definition["spec"]["versions"]
+                          if v["name"] == "v1")
+        jsonschema.validate(resource, tls_schema)
     webhooks = [hook for doc in documents
                 if doc["kind"] in ("ValidatingWebhookConfiguration", "MutatingWebhookConfiguration")
                 for hook in doc["webhooks"] if hook["name"] == "policy.sigstore.dev"]
@@ -33,7 +40,7 @@ def main():
         assert hook["failurePolicy"] == "Fail"
         assert hook["namespaceSelector"]["matchExpressions"] == [
             {"key": "policy.sigstore.dev/include", "operator": "In", "values": ["true"]}]
-    print(f"Validated {len(documents)} rendered resources, HTTP service, opt-in admission and policy CRD.")
+    print(f"Validated {len(documents)} rendered resources, HTTP/HTTPS service, TLS resources and policy CRD.")
 
 
 if __name__ == "__main__":

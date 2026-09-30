@@ -13,3 +13,4 @@ __pycache__/
 
 # Local monitoring recipients; use the committed example as a template.
 /monitoring/terraform.tfvars
+/pki-backup/terraform.tfvars
