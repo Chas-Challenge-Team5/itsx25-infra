@@ -40,8 +40,22 @@ def check_security_scanner():
         assert re.search(rf"^{tool}_SHA256=[0-9a-f]{{64}}$", script, re.M), f"{tool} saknar sha256"
     assert "install.sh | sh" not in script, "Ingen overifierad installation"
     assert "verify-attestation" in script and "download attestation" not in script
-    for path in directory.iterdir():
-        assert "discord.com/api/webhooks" not in path.read_text(), f"Webhook i git: {path.name}"
+    assert not re.search(r"^\s*trivy .*--ignore-unfixed", script, re.M), "Fynd utan rättning ska också larma"
+    assert not re.search(r"^\s*set\s+-[a-z]*x", script, re.M), "set -x skulle skriva ut webhook-URL:en"
+    security = container["securityContext"]
+    assert security["allowPrivilegeEscalation"] is False
+    assert security["capabilities"]["drop"] == ["ALL"]
+    assert pod["nodeSelector"] == {"kubernetes.io/arch": "amd64"}, "Checksummorna gäller amd64"
+    job = cronjob["spec"]["jobTemplate"]["spec"]
+    assert job["activeDeadlineSeconds"] and job["backoffLimit"] is not None and job["ttlSecondsAfterFinished"]
+    # Hela repot, inte bara scannerns katalog. Exemplet i docs (ID/TOKEN) matchar inte.
+    webhook = re.compile(r"discord(?:app)?\.com/api/webhooks/\d+/[\w-]{20,}")
+    tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, check=True,
+                             capture_output=True, text=True).stdout.splitlines()
+    for name in filter(None, tracked):
+        path = ROOT / name
+        if path.is_file():
+            assert not webhook.search(path.read_text(errors="ignore")), f"Webhook i git: {name}"
     subprocess.run(["sh", "-n", str(directory / "scan.sh")], check=True)
 
 

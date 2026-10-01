@@ -33,6 +33,12 @@ jobs:
           bash -n scripts/k3s-platform.sh
           python3 platform/check.py
 
+      - name: Test supply chain scanner script (stubbed tools, dash and busybox)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends busybox jq
+          python3 -m unittest discover -s tests/security_scanner -v
+
       - name: Test Headscale release monitor (no GitHub writes)
         run: python3 -m unittest discover -s tests/headscale_releases -v
 

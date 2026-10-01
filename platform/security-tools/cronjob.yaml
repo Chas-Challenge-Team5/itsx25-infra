@@ -17,10 +17,15 @@ spec:
     spec:
       backoffLimit: 1
       activeDeadlineSeconds: 900
+      # Rensar även manuella testjobb skapade med --from=cronjob. Historikgränserna ovan gäller bara schemalagda.
+      ttlSecondsAfterFinished: 604800
       template:
         spec:
           serviceAccountName: sbom-scanner-sa
           restartPolicy: Never
+          # Checksummorna i scan.sh gäller amd64-binärerna.
+          nodeSelector:
+            kubernetes.io/arch: amd64
           containers:
             - name: scanner
               # alpine:3.24, flerarkitekturindex. Uppdatera digest och tag tillsammans.
@@ -44,6 +49,9 @@ spec:
                   value: https://token.actions.githubusercontent.com
               securityContext:
                 allowPrivilegeEscalation: false
+                # Kör som root för apk add, men utan Linux-capabilities.
+                capabilities:
+                  drop: ["ALL"]
                 seccompProfile:
                   type: RuntimeDefault
               resources:
