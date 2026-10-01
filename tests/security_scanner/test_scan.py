@@ -106,6 +106,8 @@ def shells():
     # före PATH, därför är de riktiga i testet och inte stubbade.
     if shutil.which("busybox"):
         found.append(["busybox", "sh"])
+    elif os.environ.get("CI"):
+        raise RuntimeError("busybox krävs i CI, annars testas inte skalet som körs i klustret")
     return found
 
 
