@@ -49,6 +49,17 @@ primary, precis som cert-manager. Merge av en PR ändrar alltså inte det som k�
 - Checksummorna gäller amd64-binärerna. CronJob:en har `nodeSelector`
   `kubernetes.io/arch: amd64` och skriptet avbryter på annan arkitektur.
 - Bara containrar i `status.containerStatuses` scannas, inte init-containrar.
+- Felposten kommer från `scan.sh` självt. Fel som inträffar innan skriptet kör, eller
+  som dödar det utifrån, ger ingen Discord-post och syns bara i `kubectl get jobs` och
+  `kubectl get pods -n security-tools`:
+  - `Pending` om ingen amd64-nod finns (`nodeSelector`).
+  - `ImagePullBackOff` om alpine-imagen inte går att hämta.
+  - Deadline-kill efter 900 s (`activeDeadlineSeconds`). Skalet kör som PID 1 och
+    ignorerar SIGTERM, så EXIT-trappen hinner inte posta innan SIGKILL.
+  - `OOMKilled` om minnesgränsen överskrids.
+
+  Att fånga dem kräver något som bevakar jobbet utifrån, till exempel ett larm på
+  misslyckade jobb. Det finns inte här.
 
 ## Nätverksberoenden vid körning
 
@@ -127,7 +138,8 @@ för en nyare version.
   syns som `Failed` där. Kontrollera också `kubectl get cronjob -n security-tools` och att
   VM:en var uppe kl. 12:00. En körning som missas när noden är nere körs inte i efterhand.
   Ett jobb som hänger stoppas efter 15 minuter (`activeDeadlineSeconds`), så det blockerar
-  inte nästa dags körning trots `concurrencyPolicy: Forbid`.
+  inte nästa dags körning trots `concurrencyPolicy: Forbid`. Står podden i `Pending`
+  eller `ImagePullBackOff` har skriptet aldrig startat, se Kända begränsningar.
 
 ## Tester
 
