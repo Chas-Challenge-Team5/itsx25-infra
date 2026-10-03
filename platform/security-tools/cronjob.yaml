@@ -1,0 +1,71 @@
+# Webhook-hemligheten finns inte här. Den skapas av
+# 'bash scripts/k3s-platform.sh install-security-scanner' från en lokal fil
+# och heter sbom-vulnerability-scanner-secrets (nyckel discord-webhook-url).
+# Scriptet scan.sh läggs in som ConfigMap scanner-script av samma action.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: sbom-vulnerability-scanner
+  namespace: security-tools
+spec:
+  schedule: "0 12 * * *"
+  timeZone: Europe/Stockholm
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 900
+      # Rensar även manuella testjobb skapade med --from=cronjob. Historikgränserna ovan gäller bara schemalagda.
+      ttlSecondsAfterFinished: 604800
+      template:
+        spec:
+          serviceAccountName: sbom-scanner-sa
+          restartPolicy: Never
+          # Checksummorna i scan.sh gäller amd64-binärerna.
+          nodeSelector:
+            kubernetes.io/arch: amd64
+          containers:
+            - name: scanner
+              # alpine:3.24, flerarkitekturindex. Uppdatera digest och tag tillsammans.
+              image: alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+              command: ["/bin/sh", "/scripts/scan.sh"]
+              env:
+                - name: WEBHOOK_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: sbom-vulnerability-scanner-secrets
+                      key: discord-webhook-url
+                # Role i RBAC gäller bara default. Ändra båda samtidigt.
+                - name: TARGET_NAMESPACE
+                  value: default
+                - name: LABEL_SELECTOR
+                  value: app=company-website
+                # Samma identitet som ClusterImagePolicy verify-company-website.
+                - name: CERT_IDENTITY
+                  value: https://github.com/Chas-Challenge-Team5/company-website/.github/workflows/deploy.yml@refs/heads/main
+                - name: CERT_OIDC_ISSUER
+                  value: https://token.actions.githubusercontent.com
+              securityContext:
+                allowPrivilegeEscalation: false
+                # Kör som root för apk add, men utan Linux-capabilities.
+                capabilities:
+                  drop: ["ALL"]
+                seccompProfile:
+                  type: RuntimeDefault
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+          volumes:
+            - name: scripts
+              configMap:
+                name: scanner-script

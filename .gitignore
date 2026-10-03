@@ -14,3 +14,6 @@ __pycache__/
 # Local monitoring recipients; use the committed example as a template.
 /monitoring/terraform.tfvars
 /pki-backup/terraform.tfvars
+
+# Lokal Discord-webhook för scannern (docs/security-scanner.md).
+/security-scanner-webhook.txt

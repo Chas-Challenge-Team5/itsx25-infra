@@ -1,0 +1,8 @@
+# Utanför Sigstore-signaturpolicyn (ingen policy.sigstore.dev/include-etikett):
+# scannern kör alpine, som inte är en signerad image. Samma motivering som cert-manager.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: security-tools
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
