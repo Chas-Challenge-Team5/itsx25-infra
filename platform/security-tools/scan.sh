@@ -88,7 +88,9 @@ scan_image() { # imageID (repo@sha256:...), arbetskatalog
   FAIL_REASON=
 
   # Inget --ignore-unfixed: en HIGH/CRITICAL utan rättning ska också larma, vi behöver känna till den.
-  trivy sbom "$dir/sbom.json" --format json -o "$dir/report.json"
+  # --no-progress: förloppsindikatorn för databasnedladdningen fyller annars jobbloggen.
+  # --skip-version-check: versionen är pinnad ovan och uppdateras enligt docs, inte på Trivys notis.
+  trivy sbom "$dir/sbom.json" --no-progress --skip-version-check --format json -o "$dir/report.json"
   total=$(jq "$HIGH_CRITICAL | length" "$dir/report.json")
   unfixed=$(jq "$HIGH_CRITICAL | map(select((.FixedVersion // \"\") == \"\")) | length" "$dir/report.json")
 
@@ -99,7 +101,7 @@ scan_image() { # imageID (repo@sha256:...), arbetskatalog
     return
   fi
 
-  trivy sbom "$dir/sbom.json" --severity HIGH,CRITICAL > "$dir/report.txt"
+  trivy sbom "$dir/sbom.json" --no-progress --skip-version-check --severity HIGH,CRITICAL > "$dir/report.txt"
   jq -n --arg d "Hittade **$total** High/Critical-sårbarheter i körande image, varav **$unfixed** saknar rättning ännu:
 \`$image\`
 Rapport bifogad." \
